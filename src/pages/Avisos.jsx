@@ -56,13 +56,23 @@ export default function Avisos() {
 
   async function handleSave() {
     if (!form.titulo || !form.mensagem) { toast.error('Título e mensagem são obrigatórios'); return }
+    // Tenta com autor/lido; se coluna não existir no banco, tenta sem
+    async function trySave(fn, payload) {
+      let r = await fn(payload)
+      if (r.error?.message?.includes('autor') || r.error?.message?.includes('lido')) {
+        const { autor: _a, lido: _l, ...sem } = payload
+        r = await fn(sem)
+      }
+      return r
+    }
+
     const payload = { ...form, autor: profile?.nome || 'Admin', lido: false }
     if (editItem) {
-      const { error } = await update(editItem.id, payload)
+      const { error } = await trySave(p => update(editItem.id, p), payload)
       if (error) { toast.error('Erro: '+error.message); return }
       toast.success('Aviso atualizado!')
     } else {
-      const { error } = await add(payload)
+      const { error } = await trySave(p => add(p), payload)
       if (error) { toast.error('Erro: '+error.message); return }
       toast.success('Aviso publicado!')
     }

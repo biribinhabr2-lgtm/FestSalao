@@ -66,19 +66,44 @@ function ListEditor({ label, list, setList, newVal, setNewVal, placeholder, onEr
   )
 }
 
+/* Hook para lista persistida em localStorage */
+function useLocalList(key, initial) {
+  const [list, setList] = useState(() => {
+    try {
+      const saved = localStorage.getItem(key)
+      return saved ? JSON.parse(saved) : initial
+    } catch { return initial }
+  })
+  function setAndSave(updater) {
+    setList(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater
+      localStorage.setItem(key, JSON.stringify(next))
+      return next
+    })
+  }
+  return [list, setAndSave]
+}
+
 export default function Configuracoes() {
   const toast = useToast()
   const { listLocalUsers, createUser, removeUser, toggleUserAtivo, updateUserPassword, profile: myProfile } = useAuth()
 
   const [tab, setTab] = useState('usuarios')
-  const [empresa, setEmpresa] = useState({
-    nome: myProfile?.empresa_nome || 'Brinquedoteca Alegria',
-    segmento: 'Brinquedoteca', cnpj: '', email: '', telefone: '', endereco: ''
+  const [empresa, setEmpresa] = useState(() => {
+    try {
+      const saved = localStorage.getItem('feste_empresa')
+      return saved ? JSON.parse(saved) : {
+        nome: myProfile?.empresa_nome || 'Brinquedoteca Alegria',
+        segmento: 'Brinquedoteca', cnpj: '', email: '', telefone: '', endereco: ''
+      }
+    } catch {
+      return { nome: myProfile?.empresa_nome || 'Brinquedoteca Alegria', segmento: 'Brinquedoteca', cnpj: '', email: '', telefone: '', endereco: '' }
+    }
   })
-  const [setores, setSetores] = useState(SETORES_INIT)
-  const [cargos, setCargos]   = useState(CARGOS_INIT)
-  const [turnos, setTurnos]   = useState(TURNOS_INIT)
-  const [cats, setCats]       = useState(CATS_INIT)
+  const [setores, setSetores] = useLocalList('feste_cfg_setores', SETORES_INIT)
+  const [cargos,  setCargos]  = useLocalList('feste_cfg_cargos',  CARGOS_INIT)
+  const [turnos,  setTurnos]  = useLocalList('feste_cfg_turnos',  TURNOS_INIT)
+  const [cats,    setCats]    = useLocalList('feste_cfg_cats',    CATS_INIT)
   const [newSetor, setNewSetor] = useState('')
   const [newCargo, setNewCargo] = useState('')
   const [newTurno, setNewTurno] = useState('')
@@ -334,7 +359,7 @@ export default function Configuracoes() {
               <label className="form-label">Endereço</label>
               <input className="form-input" placeholder="Rua, número, cidade…" value={empresa.endereco} onChange={e => setEmpresa(v => ({...v, endereco: e.target.value}))} />
             </div>
-            <button className="btn btn-primary btn-sm" style={{ alignSelf:'flex-start' }} onClick={() => toast.success('Configurações da empresa salvas!')}>
+            <button className="btn btn-primary btn-sm" style={{ alignSelf:'flex-start' }} onClick={() => { localStorage.setItem('feste_empresa', JSON.stringify(empresa)); toast.success('Configurações da empresa salvas!') }}>
               <Save size={14}/> Salvar configurações
             </button>
           </div>
