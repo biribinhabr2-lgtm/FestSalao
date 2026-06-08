@@ -119,13 +119,32 @@ export default function Eventos() {
 
   async function handleSave() {
     if (!form.nome || !form.data) { toast.error('Nome e data são obrigatórios'); return }
+
+    // Tenta com responsaveis; se coluna não existir no banco, tenta sem
+    async function tryAdd(payload) {
+      let r = await add(payload)
+      if (r.error?.message?.includes('responsaveis')) {
+        const { responsaveis: _, ...sem } = payload
+        r = await add(sem)
+      }
+      return r
+    }
+    async function tryUpdate(id, payload) {
+      let r = await update(id, payload)
+      if (r.error?.message?.includes('responsaveis')) {
+        const { responsaveis: _, ...sem } = payload
+        r = await update(id, sem)
+      }
+      return r
+    }
+
     const payload = { ...form, responsaveis: JSON.stringify(form.responsaveis) }
     if (editItem) {
-      const { error } = await update(editItem.id, payload)
+      const { error } = await tryUpdate(editItem.id, payload)
       if (error) { toast.error('Erro: '+error.message); return }
       toast.success('Evento atualizado!')
     } else {
-      const { error } = await add(payload)
+      const { error } = await tryAdd(payload)
       if (error) { toast.error('Erro: '+error.message); return }
       toast.success('Evento criado!')
     }

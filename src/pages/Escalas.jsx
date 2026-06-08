@@ -65,15 +65,26 @@ export default function Escalas() {
   async function handleSave() {
     if (!form.data) { toast.error('Selecione a data'); return }
     const func = funcionarios.find(f => f.id === form.funcionario_id)
+
+    // Tenta com campo 'funcionario'; se coluna não existir, tenta sem
+    async function trySave(fn, payload) {
+      let r = await fn(payload)
+      if (r.error?.message?.includes('funcionario') && !r.error?.message?.includes('funcionario_id')) {
+        const { funcionario: _, ...sem } = payload
+        r = await fn(sem)
+      }
+      return r
+    }
+
     const payload = { ...form, funcionario: func?.nome || form.funcionario || '' }
 
     if (editItem) {
-      const { error } = await update(editItem.id, payload)
+      const { error } = await trySave(p => update(editItem.id, p), payload)
       if (error) { toast.error('Erro ao salvar: ' + error.message); return }
       toast.success('Escala atualizada!')
     } else {
       if (!form.funcionario_id) { toast.error('Selecione o funcionário'); return }
-      const { error } = await add(payload)
+      const { error } = await trySave(p => add(p), payload)
       if (error) { toast.error('Erro ao salvar: ' + error.message); return }
       toast.success('Escala adicionada!')
     }
