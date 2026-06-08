@@ -146,19 +146,25 @@ export function AuthProvider({ children }) {
       saveUsers(users)
       return newUser
     }
-    // Supabase: chama Netlify Function para criar via service key
+    // Supabase: chama API serverless (Vercel: /api/invite)
     const session = await supabase.auth.getSession()
     const token = session.data.session?.access_token
+
     const res = await fetch('/api/invite', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ email, nome, cargo, setor, role }),
+      body: JSON.stringify({ email, password, nome, cargo, setor, role }),
     })
+
+    // Lê o texto bruto primeiro — evita crash se resposta não for JSON
+    const text = await res.text()
+    let json = {}
+    try { json = JSON.parse(text) } catch { /* resposta não era JSON */ }
+
     if (!res.ok) {
-      const err = await res.json()
-      throw new Error(err.error || 'Erro ao criar usuário.')
+      throw new Error(json.error || `Erro ${res.status} ao criar usuário.`)
     }
-    return res.json()
+    return json
   }
 
   /* ── Atualizar senha de usuário (admin) ── */
