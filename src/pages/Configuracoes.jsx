@@ -13,6 +13,59 @@ const CARGOS_INIT  = ['Administrador','Coordenadora','Monitora','Monitor','Auxil
 const TURNOS_INIT  = ['Manhã (08:00–14:00)','Tarde (14:00–20:00)','Noite (18:00–00:00)','Integral (08:00–18:00)','Abertura (07:30–13:30)','Fechamento (16:00–22:00)']
 const CATS_INIT    = ['Festas','Diária','Eventos','Insumos','Fornecedores','RH','Manutenção','Administrativo']
 
+/* ── fora do componente para evitar re-criação a cada render ── */
+function addToList(list, setList, val, setVal, onError) {
+  if (!val.trim()) return
+  if (list.includes(val.trim())) { onError('Item já existe'); return }
+  setList(l => [...l, val.trim()])
+  setVal('')
+}
+function removeFromList(list, setList, val) {
+  if (!confirm(`Remover "${val}"?`)) return
+  setList(l => l.filter(x => x !== val))
+}
+
+function ListEditor({ label, list, setList, newVal, setNewVal, placeholder, onError }) {
+  return (
+    <div>
+      <div style={{ fontSize:13,fontWeight:700,color:'var(--text-2)',marginBottom:8,textTransform:'uppercase',letterSpacing:'.06em' }}>{label}</div>
+      <div style={{ display:'flex', gap:6, marginBottom:8 }}>
+        <input
+          className="form-input"
+          placeholder={placeholder}
+          value={newVal}
+          onChange={e => setNewVal(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addToList(list, setList, newVal, setNewVal, onError))}
+        />
+        <button
+          type="button"
+          className="btn btn-secondary btn-sm"
+          style={{ flexShrink:0 }}
+          onClick={() => addToList(list, setList, newVal, setNewVal, onError)}
+        >
+          <Plus size={13}/>
+        </button>
+      </div>
+      <div style={{ border:'1.5px solid var(--border)', borderRadius:'var(--radius-sm)', overflow:'hidden' }}>
+        {list.length === 0 && (
+          <div style={{ padding:'14px', textAlign:'center', color:'var(--text-3)', fontSize:13 }}>Nenhum item cadastrado</div>
+        )}
+        {list.map((item, i) => (
+          <div key={item} style={{ display:'flex',alignItems:'center',padding:'9px 14px',borderBottom:i<list.length-1?'1px solid var(--border)':'none',background:'var(--surface)' }}>
+            <span style={{ flex:1, fontSize:13.5 }}>{item}</span>
+            <button
+              onClick={() => removeFromList(list, setList, item)}
+              style={{ color:'var(--text-3)',background:'none',border:'none',cursor:'pointer',padding:2,display:'flex',alignItems:'center' }}
+            >
+              <Trash2 size={13}/>
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export default function Configuracoes() {
   const toast = useToast()
   const { listLocalUsers, createUser, removeUser, toggleUserAtivo, updateUserPassword, profile: myProfile } = useAuth()
@@ -107,44 +160,6 @@ export default function Configuracoes() {
     } catch (err) {
       toast.error(err.message)
     }
-  }
-
-  /* ── Listas editáveis ── */
-  function addToList(list, setList, val, setVal) {
-    if (!val.trim()) return
-    if (list.includes(val.trim())) { toast.error('Item já existe'); return }
-    setList(l => [...l, val.trim()]); setVal('')
-  }
-  function removeFromList(list, setList, val) {
-    if (!confirm(`Remover "${val}"?`)) return
-    setList(l => l.filter(x => x !== val))
-  }
-
-  function ListEditor({ label, list, setList, newVal, setNewVal, placeholder }) {
-    return (
-      <div>
-        <div style={{ fontSize:13,fontWeight:700,color:'var(--text-2)',marginBottom:8,textTransform:'uppercase',letterSpacing:'.06em' }}>{label}</div>
-        <div style={{ display:'flex', gap:6, marginBottom:8 }}>
-          <input className="form-input" placeholder={placeholder} value={newVal} onChange={e => setNewVal(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addToList(list,setList,newVal,setNewVal))} />
-          <button type="button" className="btn btn-secondary btn-sm" style={{ flexShrink:0 }}
-            onClick={() => addToList(list,setList,newVal,setNewVal)}>
-            <Plus size={13}/>
-          </button>
-        </div>
-        <div style={{ border:'1.5px solid var(--border)', borderRadius:'var(--radius-sm)', overflow:'hidden' }}>
-          {list.map((item, i) => (
-            <div key={item} style={{ display:'flex',alignItems:'center',padding:'9px 14px',borderBottom:i<list.length-1?'1px solid var(--border)':'none',background:'var(--surface)' }}>
-              <span style={{ flex:1, fontSize:13.5 }}>{item}</span>
-              <button onClick={() => removeFromList(list,setList,item)}
-                style={{ color:'var(--text-3)',background:'none',border:'none',cursor:'pointer',padding:2,display:'flex',alignItems:'center' }}>
-                <Trash2 size={13}/>
-              </button>
-            </div>
-          ))}
-        </div>
-      </div>
-    )
   }
 
   const tabs = [
@@ -330,10 +345,10 @@ export default function Configuracoes() {
       {tab === 'setores' && (
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, maxWidth:800 }}>
           <div className="card"><div className="card-body">
-            <ListEditor label="Setores" list={setores} setList={setSetores} newVal={newSetor} setNewVal={setNewSetor} placeholder="Ex: Recreação…" />
+            <ListEditor label="Setores" list={setores} setList={setSetores} newVal={newSetor} setNewVal={setNewSetor} placeholder="Ex: Recreação…" onError={toast.error} />
           </div></div>
           <div className="card"><div className="card-body">
-            <ListEditor label="Cargos" list={cargos} setList={setCargos} newVal={newCargo} setNewVal={setNewCargo} placeholder="Ex: Monitor…" />
+            <ListEditor label="Cargos" list={cargos} setList={setCargos} newVal={newCargo} setNewVal={setNewCargo} placeholder="Ex: Monitor…" onError={toast.error} />
           </div></div>
         </div>
       )}
@@ -342,7 +357,7 @@ export default function Configuracoes() {
       {tab === 'turnos' && (
         <div className="card" style={{ maxWidth:500 }}>
           <div className="card-body">
-            <ListEditor label="Tipos de Turno" list={turnos} setList={setTurnos} newVal={newTurno} setNewVal={setNewTurno} placeholder="Ex: Manhã (08:00–14:00)…" />
+            <ListEditor label="Tipos de Turno" list={turnos} setList={setTurnos} newVal={newTurno} setNewVal={setNewTurno} placeholder="Ex: Manhã (08:00–14:00)…" onError={toast.error} />
           </div>
         </div>
       )}
@@ -351,7 +366,7 @@ export default function Configuracoes() {
       {tab === 'financeiro' && (
         <div className="card" style={{ maxWidth:500 }}>
           <div className="card-body">
-            <ListEditor label="Categorias Financeiras" list={cats} setList={setCats} newVal={newCat} setNewVal={setNewCat} placeholder="Ex: Festas, Manutenção…" />
+            <ListEditor label="Categorias Financeiras" list={cats} setList={setCats} newVal={newCat} setNewVal={setNewCat} placeholder="Ex: Festas, Manutenção…" onError={toast.error} />
           </div>
         </div>
       )}
