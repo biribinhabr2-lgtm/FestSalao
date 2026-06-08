@@ -76,9 +76,10 @@ function EventoCard({ ev, onView, onEdit, onDelete, isAdmin }) {
 }
 
 export default function Eventos() {
-  const { isAdmin } = useAuth()
+  const { isAdmin, profile } = useAuth()
   const toast = useToast()
   const { rows: eventos, loading, add, update, remove } = useTable('eventos', { seedData: mockEventos, orderBy: 'data', orderAsc: true })
+  const { add: addAviso } = useTable('avisos', { seedData: [] })
   const { funcionarios } = useFuncionarios()
 
   const [modalOpen, setModalOpen]     = useState(false)
@@ -87,6 +88,7 @@ export default function Eventos() {
   const [filterStatus, setFilterStatus] = useState('')
   const [tab, setTab]                 = useState('futuros')
   const [respInput, setRespInput]     = useState('')
+  const [publicarAviso, setPublicarAviso] = useState(false)
 
   const emptyForm = { nome:'', data:'', horario_prep:'09:00', horario_inicio:'10:00', horario_fim:'13:00', tipo:'Aniversário', status:'Agendado', criancas:20, responsaveis:[], observacoes:'' }
   const [form, setForm] = useState(emptyForm)
@@ -104,7 +106,7 @@ export default function Eventos() {
   }
 
   function openCreate() {
-    setEditItem(null); setForm(emptyForm); setRespInput(''); setModalOpen(true)
+    setEditItem(null); setForm(emptyForm); setRespInput(''); setPublicarAviso(false); setModalOpen(true)
   }
   function openEdit(ev) {
     setEditItem(ev)
@@ -146,7 +148,30 @@ export default function Eventos() {
     } else {
       const { error } = await tryAdd(payload)
       if (error) { toast.error('Erro: '+error.message); return }
-      toast.success('Evento criado!')
+
+      /* Publicar como aviso se checkbox marcado */
+      if (publicarAviso) {
+        const dataFmt = form.data
+          ? format(new Date(form.data + 'T00:00'), "dd/MM/yyyy", { locale: ptBR })
+          : ''
+        const avisoPayload = {
+          titulo:        `🎉 Evento agendado: ${form.nome}`,
+          mensagem:      `Um novo evento foi agendado para ${dataFmt}.\n\n` +
+                         `Tipo: ${form.tipo} · ${form.criancas} crianças\n` +
+                         `Horário: ${form.horario_inicio}–${form.horario_fim}\n` +
+                         (form.observacoes ? `\nObs: ${form.observacoes}` : ''),
+          tipo:          'Geral',
+          prioridade:    'normal',
+          destinatarios: 'Todos',
+          expira_em:     form.data,
+          autor:         profile?.nome || 'Admin',
+          lido:          false,
+        }
+        await addAviso(avisoPayload)
+        toast.success('Evento criado e aviso publicado!')
+      } else {
+        toast.success('Evento criado!')
+      }
     }
     setModalOpen(false)
   }
@@ -261,6 +286,34 @@ export default function Eventos() {
           {form.responsaveis.length>0 && <div className="chip-list" style={{ marginTop:6 }}>{form.responsaveis.map(r=><div key={r} className="chip">{r}<span className="chip-remove" onClick={()=>removeResp(r)}>×</span></div>)}</div>}
         </div>
         <div className="form-group"><label className="form-label">Observações</label><textarea className="form-input form-textarea" value={form.observacoes} onChange={e=>setForm(f=>({...f,observacoes:e.target.value}))} placeholder="Tema, detalhes, fornecedores…"/></div>
+
+        {/* Publicar como aviso — só na criação */}
+        {!editItem && (
+          <div style={{
+            display:'flex', alignItems:'flex-start', gap:10,
+            padding:'12px 16px',
+            background: publicarAviso ? 'var(--accent-light)' : 'var(--surface-2)',
+            borderRadius:'var(--radius-sm)',
+            border:`1.5px solid ${publicarAviso ? 'var(--accent)' : 'var(--border)'}`,
+            cursor:'pointer', transition:'all .15s',
+          }} onClick={()=>setPublicarAviso(s=>!s)}>
+            <input
+              type="checkbox"
+              checked={publicarAviso}
+              onChange={e=>setPublicarAviso(e.target.checked)}
+              onClick={e=>e.stopPropagation()}
+              style={{ width:16, height:16, accentColor:'var(--accent)', flexShrink:0, marginTop:2, cursor:'pointer' }}
+            />
+            <div>
+              <div style={{ fontSize:13.5, fontWeight:600, color:'var(--text)' }}>
+                🔔 Publicar como aviso para a equipe
+              </div>
+              <div style={{ fontSize:12, color:'var(--text-2)', marginTop:2 }}>
+                Cria automaticamente um aviso em "Avisos" com os detalhes deste evento.
+              </div>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   )
