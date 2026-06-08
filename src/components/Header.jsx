@@ -1,5 +1,4 @@
-import { Menu, Bell, X } from 'lucide-react'
-import { useAuth } from '../context/AuthContext'
+import { Menu } from 'lucide-react'
 
 const PAGE_TITLES = {
   '/':              'Dashboard',
