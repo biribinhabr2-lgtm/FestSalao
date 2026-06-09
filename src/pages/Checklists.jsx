@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { format } from 'date-fns'
-import { Plus, Trash2, Edit3, ChevronDown, ChevronUp, X, UserCheck, Loader2 } from 'lucide-react'
+import { ptBR } from 'date-fns/locale'
+import { Plus, Trash2, Edit3, ChevronDown, ChevronUp, X, UserCheck, Loader2, AlertTriangle } from 'lucide-react'
 import Modal from '../components/ui/Modal'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../components/ui/Toast'
@@ -11,8 +12,8 @@ const RECORRENCIAS = ['Diária','Semanal','Mensal','Por evento','Sob demanda']
 const SETORES      = ['Geral','Recreação','Limpeza','Eventos','Recepção','Cozinha']
 const STATUS_MAP   = { 'Concluído':'badge-green','Em andamento':'badge-orange','Pendente':'badge-yellow' }
 
-/* ── Fora do componente pai para evitar loop de re-render ── */
-function ExecucaoCard({ ex, isAdmin, today, onCheck, onDelete, expanded, onToggle }) {
+/* ── Card de execução — FORA do componente pai ── */
+function ExecucaoCard({ ex, isAdmin, today, onCheck, onDelete, expanded, onToggle, vencido }) {
   const itens  = Array.isArray(ex.itens) ? ex.itens : []
   const total  = itens.length
   const feitos = itens.filter(i => i.feito).length
@@ -20,36 +21,54 @@ function ExecucaoCard({ ex, isAdmin, today, onCheck, onDelete, expanded, onToggl
   const open   = expanded
 
   return (
-    <div className="card" style={{ marginBottom:10 }}>
-      <div
-        style={{ padding:'14px 18px', cursor:'pointer', userSelect:'none' }}
-        onClick={onToggle}
-      >
+    <div className="card" style={{
+      marginBottom: 10,
+      borderLeft: vencido ? '3px solid var(--red)' : undefined,
+    }}>
+      <div style={{ padding:'14px 18px', cursor:'pointer', userSelect:'none' }} onClick={onToggle}>
         <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-          <div style={{ width:42,height:42,borderRadius:8,background:'var(--surface-2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,flexShrink:0 }}>
-            📋
+          {/* ícone */}
+          <div style={{
+            width:42, height:42, borderRadius:8, flexShrink:0,
+            background: vencido ? 'var(--red-light)' : 'var(--surface-2)',
+            color: vencido ? 'var(--red)' : undefined,
+            display:'flex', alignItems:'center', justifyContent:'center', fontSize:20,
+          }}>
+            {vencido ? <AlertTriangle size={20}/> : '📋'}
           </div>
+
+          {/* info */}
           <div style={{ flex:1, minWidth:0 }}>
-            <div style={{ fontFamily:'var(--font-display)',fontWeight:700,fontSize:14 }}>{ex.modelo_nome}</div>
-            <div style={{ display:'flex', gap:10, alignItems:'center', marginTop:2 }}>
-              <span style={{ fontSize:12,color:'var(--text-2)' }}>{ex.responsavel}</span>
-              {isAdmin && ex.data !== today && (
-                <span style={{ fontSize:11.5,color:'var(--text-3)' }}>
-                  {format(new Date(ex.data+'T00:00'),'dd/MM/yyyy')}
+            <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+              <span style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:14 }}>{ex.modelo_nome}</span>
+              {vencido && <span className="badge badge-red" style={{ fontSize:10.5 }}>Vencido</span>}
+            </div>
+            <div style={{ display:'flex', gap:10, alignItems:'center', marginTop:2, flexWrap:'wrap' }}>
+              <span style={{ fontSize:12, color:'var(--text-2)' }}>{ex.responsavel}</span>
+              {ex.data !== today && (
+                <span style={{ fontSize:11.5, color: vencido ? 'var(--red)' : 'var(--text-3)', fontWeight: vencido ? 600 : 400 }}>
+                  {format(new Date(ex.data+'T00:00'), "dd 'de' MMM", { locale: ptBR })}
                 </span>
               )}
             </div>
             <div style={{ marginTop:6 }}>
               <div className="progress-bar">
-                <div className={`progress-fill ${pct===100?'green':''}`} style={{ width:`${pct}%` }}/>
+                <div
+                  className={`progress-fill ${pct===100?'green':vencido?'':''}`}
+                  style={{ width:`${pct}%`, background: vencido && pct<100 ? 'var(--red)' : undefined }}
+                />
               </div>
-              <div style={{ fontSize:11,color:'var(--text-3)',marginTop:3 }}>{feitos}/{total} itens concluídos</div>
+              <div style={{ fontSize:11, color:'var(--text-3)', marginTop:3 }}>{feitos}/{total} itens concluídos</div>
             </div>
           </div>
-          <div style={{ display:'flex',flexDirection:'column',alignItems:'flex-end',gap:6,flexShrink:0 }}>
+
+          {/* status + % */}
+          <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:6, flexShrink:0 }}>
             <span className={`badge ${STATUS_MAP[ex.status]||'badge-gray'}`}>{ex.status}</span>
-            <span style={{ fontSize:14,fontWeight:800,color:pct===100?'var(--green)':pct>0?'var(--accent)':'var(--text-3)' }}>{pct}%</span>
+            <span style={{ fontSize:14, fontWeight:800, color: pct===100?'var(--green)':vencido?'var(--red)':pct>0?'var(--accent)':'var(--text-3)' }}>{pct}%</span>
           </div>
+
+          {/* delete (admin) */}
           {isAdmin && (
             <button
               className="btn btn-icon btn-danger btn-sm"
@@ -59,10 +78,8 @@ function ExecucaoCard({ ex, isAdmin, today, onCheck, onDelete, expanded, onToggl
               <Trash2 size={12}/>
             </button>
           )}
-          {open
-            ? <ChevronUp size={16} style={{ color:'var(--text-3)',flexShrink:0 }}/>
-            : <ChevronDown size={16} style={{ color:'var(--text-3)',flexShrink:0 }}/>
-          }
+
+          {open ? <ChevronUp size={16} style={{ color:'var(--text-3)', flexShrink:0 }}/> : <ChevronDown size={16} style={{ color:'var(--text-3)', flexShrink:0 }}/>}
         </div>
       </div>
 
@@ -79,18 +96,20 @@ function ExecucaoCard({ ex, isAdmin, today, onCheck, onDelete, expanded, onToggl
               <div style={{ flex:1 }}>
                 <span className={`check-label ${it.feito?'done':''}`}>{it.descricao}</span>
                 {it.obrigatorio && !it.feito && (
-                  <span style={{ fontSize:10.5,color:'var(--red)',marginLeft:8,fontWeight:600 }}>Obrigatório</span>
+                  <span style={{ fontSize:10.5, color:'var(--red)', marginLeft:8, fontWeight:600 }}>Obrigatório</span>
                 )}
               </div>
             </div>
           ))}
-          {isAdmin && (
-            <div style={{ padding:'10px 16px',borderTop:'1px solid var(--border)',background:'var(--surface-2)' }}>
-              <span style={{ fontSize:11.5,color:'var(--text-3)' }}>
-                Somente o funcionário atribuído pode marcar os itens.
-              </span>
-            </div>
-          )}
+          <div style={{ padding:'10px 16px', borderTop:'1px solid var(--border)', background:'var(--surface-2)' }}>
+            <span style={{ fontSize:11.5, color:'var(--text-3)' }}>
+              {isAdmin
+                ? 'Somente o funcionário atribuído pode marcar os itens.'
+                : ex.data !== today
+                  ? 'Este checklist está vencido e não pode ser alterado.'
+                  : null}
+            </span>
+          </div>
         </div>
       )}
     </div>
@@ -102,42 +121,48 @@ export default function Checklists() {
   const { isAdmin, profile } = useAuth()
   const toast = useToast()
 
-  const { rows: modelos,   loading: lm, add: addModelo,   update: updateModelo, remove: removeModelo }   = useTable('checklist_modelos',    { seedData: mockChecklistModelos })
+  const { rows: modelos,   loading: lm, add: addModelo,   update: updateModelo, remove: removeModelo } = useTable('checklist_modelos',  { seedData: mockChecklistModelos })
   const { rows: execucoes, loading: le, add: addExec, update: updateExec, remove: removeExec, setRows: setExecs } = useTable('checklist_execucoes', { seedData: mockExecucoes, orderBy: 'data', orderAsc: false })
   const { funcionarios } = useFuncionarios()
 
-  const [tab, setTab]         = useState('hoje')
+  const [tab, setTab]           = useState('hoje')
   const [expanded, setExpanded] = useState({})
 
   /* Modelos */
   const [modalModelo, setModalModelo] = useState(false)
-  const [editModelo, setEditModelo]   = useState(null)
-  const [formModelo, setFormModelo]   = useState({ nome:'', setor:'Geral', recorrencia:'Diária', itens:[] })
-  const [novoItem, setNovoItem]       = useState('')
+  const [editModelo,  setEditModelo]  = useState(null)
+  const [formModelo,  setFormModelo]  = useState({ nome:'', setor:'Geral', recorrencia:'Diária', itens:[] })
+  const [novoItem,    setNovoItem]    = useState('')
 
   /* Atribuição */
-  const [modalAtribuir, setModalAtribuir]   = useState(false)
+  const [modalAtribuir,  setModalAtribuir]  = useState(false)
   const [atribuirModelo, setAtribuirModelo] = useState(null)
-  const [atribuirForm, setAtribuirForm]     = useState({ funcionario_id:'', data: format(new Date(),'yyyy-MM-dd') })
+  const [atribuirForm,   setAtribuirForm]   = useState({ funcionario_id:'', data: format(new Date(),'yyyy-MM-dd') })
 
-  const today = format(new Date(),'yyyy-MM-dd')
+  const today = format(new Date(), 'yyyy-MM-dd')
 
+  /* ── Filtros com validade ── */
+  // Hoje: somente data === hoje
   const execHoje = execucoes.filter(e => {
     if (e.data !== today) return false
     if (isAdmin) return true
     return e.funcionario_id === profile?.id
   })
-  const execHist = execucoes.filter(e => {
-    if (e.data === today) return false
-    if (isAdmin) return true
-    return e.funcionario_id === profile?.id
-  })
+
+  // Vencidos: data < hoje E não concluído (só admin vê)
+  const execVencidos = isAdmin
+    ? execucoes.filter(e => e.data < today && e.status !== 'Concluído')
+    : []
+
+  // Histórico: todos os do passado (admin), ou só concluídos do passado (funcionário – mas a aba nem aparece)
+  const execHist = isAdmin
+    ? execucoes.filter(e => e.data < today)
+    : []
 
   function toggleExpand(id) { setExpanded(s => ({ ...s, [id]: !s[id] })) }
 
-  /* Marcar item — atualiza local + persiste no banco/localStorage */
+  /* ── Marcar item ── */
   async function checkItem(execId, itemId) {
-    // 1. Encontra a execução atual e calcula novo estado
     const ex = execucoes.find(e => e.id === execId)
     if (!ex) return
 
@@ -146,29 +171,28 @@ export default function Checklists() {
       : (ex.itens || [])
 
     const novosItens = rawItens.map(it => it.id === itemId ? { ...it, feito: !it.feito } : it)
-    const total  = novosItens.length
-    const feitos = novosItens.filter(i => i.feito).length
+    const total      = novosItens.length
+    const feitos     = novosItens.filter(i => i.feito).length
     const novoStatus = feitos === total ? 'Concluído' : feitos > 0 ? 'Em andamento' : 'Pendente'
 
-    // 2. Atualiza UI imediatamente (otimista)
+    // Atualiza UI otimisticamente
     setExecs(prev => prev.map(e =>
       e.id === execId ? { ...e, itens: novosItens, status: novoStatus } : e
     ))
 
-    // 3. Persiste no banco / localStorage
+    // Persiste
     const { error } = await updateExec(execId, {
       itens:  JSON.stringify(novosItens),
       status: novoStatus,
     })
 
     if (error) {
-      // Reverte UI se falhou
       setExecs(prev => prev.map(e => e.id === execId ? ex : e))
       toast.error('Erro ao salvar: ' + error.message)
     }
   }
 
-  /* Remover execução */
+  /* ── Remover execução ── */
   async function deleteExec(id) {
     if (!confirm('Remover esta atribuição?')) return
     const { error } = await removeExec(id)
@@ -176,7 +200,7 @@ export default function Checklists() {
     toast.success('Atribuição removida.')
   }
 
-  /* Atribuir checklist */
+  /* ── Atribuir checklist ── */
   function abrirAtribuir(modelo) {
     setAtribuirModelo(modelo)
     setAtribuirForm({ funcionario_id:'', data: today })
@@ -184,13 +208,14 @@ export default function Checklists() {
   }
   async function confirmarAtribuicao() {
     if (!atribuirForm.funcionario_id) { toast.error('Selecione um funcionário'); return }
-    const func = funcionarios.find(f => f.id===atribuirForm.funcionario_id)
+    const func = funcionarios.find(f => f.id === atribuirForm.funcionario_id)
     const jaExiste = execucoes.find(e =>
-      e.modelo_id===atribuirModelo.id &&
-      e.data===atribuirForm.data &&
-      e.funcionario_id===atribuirForm.funcionario_id
+      e.modelo_id === atribuirModelo.id &&
+      e.data      === atribuirForm.data &&
+      e.funcionario_id === atribuirForm.funcionario_id
     )
     if (jaExiste) { toast.error(`${func?.nome} já possui este checklist nessa data`); return }
+
     const payload = {
       modelo_id:      atribuirModelo.id,
       modelo_nome:    atribuirModelo.nome,
@@ -198,9 +223,8 @@ export default function Checklists() {
       responsavel:    func?.nome || '?',
       funcionario_id: atribuirForm.funcionario_id,
       status:         'Pendente',
-      itens:          JSON.stringify(atribuirModelo.itens.map(i=>({...i,feito:false}))),
+      itens:          JSON.stringify(atribuirModelo.itens.map(i => ({ ...i, feito: false }))),
     }
-    // tenta com todos os campos; se falhar por coluna faltando, tenta sem funcionario_id
     let result = await addExec(payload)
     if (result.error?.message?.includes('funcionario_id') || result.error?.message?.includes('responsavel') || result.error?.message?.includes('modelo_nome')) {
       const { funcionario_id: _fi, responsavel: _r, modelo_nome: _mn, ...semExtra } = payload
@@ -212,47 +236,44 @@ export default function Checklists() {
     setTab('hoje')
   }
 
-  /* Modelos CRUD */
+  /* ── Modelos CRUD ── */
   function openCreateModelo() {
-    setEditModelo(null); setFormModelo({ nome:'',setor:'Geral',recorrencia:'Diária',itens:[] }); setNovoItem(''); setModalModelo(true)
+    setEditModelo(null); setFormModelo({ nome:'', setor:'Geral', recorrencia:'Diária', itens:[] }); setNovoItem(''); setModalModelo(true)
   }
   function openEditModelo(m) {
-    setEditModelo(m); setFormModelo({ nome:m.nome,setor:m.setor,recorrencia:m.recorrencia,itens:[...m.itens] }); setNovoItem(''); setModalModelo(true)
+    setEditModelo(m); setFormModelo({ nome:m.nome, setor:m.setor, recorrencia:m.recorrencia, itens:[...m.itens] }); setNovoItem(''); setModalModelo(true)
   }
   function addItemModelo() {
     if (!novoItem.trim()) return
-    setFormModelo(f=>({...f,itens:[...f.itens,{id:`ni${Date.now()}`,descricao:novoItem.trim(),obrigatorio:false}]}))
+    setFormModelo(f => ({ ...f, itens: [...f.itens, { id:`ni${Date.now()}`, descricao:novoItem.trim(), obrigatorio:false }] }))
     setNovoItem('')
   }
-  function removeItemModelo(id) { setFormModelo(f=>({...f,itens:f.itens.filter(i=>i.id!==id)})) }
-  function toggleObrigatorio(id) { setFormModelo(f=>({...f,itens:f.itens.map(i=>i.id===id?{...i,obrigatorio:!i.obrigatorio}:i)})) }
+  function removeItemModelo(id) { setFormModelo(f => ({ ...f, itens: f.itens.filter(i => i.id !== id) })) }
+  function toggleObrigatorio(id) { setFormModelo(f => ({ ...f, itens: f.itens.map(i => i.id===id ? {...i, obrigatorio:!i.obrigatorio} : i) })) }
+
   async function saveModelo() {
     if (!formModelo.nome) { toast.error('Nome obrigatório'); return }
-    const payload = { nome: formModelo.nome, setor: formModelo.setor, recorrencia: formModelo.recorrencia, itens: JSON.stringify(formModelo.itens) }
+    const payload = { nome:formModelo.nome, setor:formModelo.setor, recorrencia:formModelo.recorrencia, itens:JSON.stringify(formModelo.itens) }
 
-    // Retry defensivo: remove campos que a tabela não reconheça
     async function tryOp(fn, p) {
       let r = await fn(p)
-      if (r.error?.message?.includes("'itens'")) {
-        const { itens: _, ...sem } = p; r = await fn(sem)
-      }
-      if (r.error?.message?.includes("'setor'") || r.error?.message?.includes("'recorrencia'")) {
-        const { setor: _s, recorrencia: _r, ...sem } = p; r = await fn(sem)
-      }
+      if (r.error?.message?.includes("'itens'")) { const { itens:_, ...sem }=p; r = await fn(sem) }
+      if (r.error?.message?.includes("'setor'") || r.error?.message?.includes("'recorrencia'")) { const { setor:_s, recorrencia:_r, ...sem }=p; r = await fn(sem) }
       return r
     }
 
     if (editModelo) {
       const { error } = await tryOp(p => updateModelo(editModelo.id, p), payload)
-      if (error) { toast.error('Erro ao atualizar: ' + error.message); return }
+      if (error) { toast.error('Erro ao atualizar: '+error.message); return }
       toast.success('Modelo atualizado!')
     } else {
       const { error } = await tryOp(p => addModelo(p), payload)
-      if (error) { toast.error('Erro ao criar: ' + error.message); return }
+      if (error) { toast.error('Erro ao criar: '+error.message); return }
       toast.success('Modelo criado!')
     }
     setModalModelo(false)
   }
+
   async function deleteModelo(id) {
     if (!confirm('Excluir este modelo?')) return
     const { error } = await removeModelo(id)
@@ -260,7 +281,7 @@ export default function Checklists() {
     toast.success('Modelo excluído.')
   }
 
-  /* Normaliza itens que podem vir como JSON string do Supabase */
+  /* ── Helpers ── */
   function parseExec(ex) {
     const itens = typeof ex.itens === 'string' ? (() => { try { return JSON.parse(ex.itens) } catch { return [] } })() : (ex.itens||[])
     return { ...ex, itens }
@@ -271,10 +292,14 @@ export default function Checklists() {
   }
 
   if (lm || le) return (
-    <div className="page" style={{ display:'flex',alignItems:'center',justifyContent:'center',minHeight:300 }}>
+    <div className="page" style={{ display:'flex', alignItems:'center', justifyContent:'center', minHeight:300 }}>
       <Loader2 size={28} className="animate-spin" style={{ color:'var(--accent)' }}/>
     </div>
   )
+
+  // Badge counts
+  const qtdPendentesHoje    = execHoje.filter(e => e.status !== 'Concluído').length
+  const qtdVencidos         = execVencidos.length
 
   return (
     <div className="page">
@@ -282,21 +307,40 @@ export default function Checklists() {
         <div>
           <h1 className="page-title">Checklists</h1>
           <p className="page-subtitle">
-            {isAdmin ? 'Atribua tarefas à equipe e acompanhe o progresso' : 'Suas tarefas atribuídas pelo administrador'}
+            {isAdmin
+              ? `${qtdVencidos > 0 ? `⚠️ ${qtdVencidos} vencido(s) — ` : ''}Atribua e acompanhe as tarefas da equipe`
+              : 'Suas tarefas de hoje'}
           </p>
         </div>
       </div>
 
+      {/* ── TABS ── */}
       <div className="tabs" style={{ marginBottom:16 }}>
+        {/* Hoje */}
         <div className={`tab-item ${tab==='hoje'?'active':''}`} onClick={()=>setTab('hoje')}>
           Hoje
-          {execHoje.filter(e=>e.status!=='Concluído').length>0 && (
-            <span className="badge badge-orange" style={{ marginLeft:6 }}>
-              {execHoje.filter(e=>e.status!=='Concluído').length}
-            </span>
+          {qtdPendentesHoje > 0 && (
+            <span className="badge badge-orange" style={{ marginLeft:6 }}>{qtdPendentesHoje}</span>
           )}
         </div>
-        <div className={`tab-item ${tab==='historico'?'active':''}`} onClick={()=>setTab('historico')}>Histórico</div>
+
+        {/* Vencidos — só admin */}
+        {isAdmin && (
+          <div className={`tab-item ${tab==='vencidos'?'active':''}`} onClick={()=>setTab('vencidos')}
+            style={{ color: qtdVencidos>0 && tab!=='vencidos' ? 'var(--red)' : undefined }}>
+            Vencidos
+            {qtdVencidos > 0 && (
+              <span className="badge badge-red" style={{ marginLeft:6 }}>{qtdVencidos}</span>
+            )}
+          </div>
+        )}
+
+        {/* Histórico — só admin */}
+        {isAdmin && (
+          <div className={`tab-item ${tab==='historico'?'active':''}`} onClick={()=>setTab('historico')}>Histórico</div>
+        )}
+
+        {/* Modelos — só admin */}
         {isAdmin && (
           <div className={`tab-item ${tab==='modelos'?'active':''}`} onClick={()=>setTab('modelos')}>
             Modelos <span className="badge badge-gray" style={{ marginLeft:6 }}>{modelos.length}</span>
@@ -307,92 +351,152 @@ export default function Checklists() {
       {/* ── HOJE ── */}
       {tab==='hoje' && (
         <div>
-          {execHoje.length===0 ? (
+          {execHoje.length === 0 ? (
             <div className="card">
               <div className="empty-state">
-                <div className="empty-icon">{isAdmin?'📋':'✅'}</div>
-                <div className="empty-title">{isAdmin?'Nenhum checklist atribuído hoje':'Nenhuma tarefa para você hoje'}</div>
-                <div className="empty-desc">{isAdmin?'Acesse "Modelos" e atribua checklists.':'O administrador ainda não atribuiu tarefas.'}</div>
+                <div className="empty-icon">{isAdmin ? '📋' : '✅'}</div>
+                <div className="empty-title">{isAdmin ? 'Nenhum checklist atribuído hoje' : 'Nenhuma tarefa para hoje'}</div>
+                <div className="empty-desc">{isAdmin ? 'Acesse "Modelos" e atribua checklists.' : 'O administrador ainda não atribuiu tarefas para hoje.'}</div>
                 {isAdmin && <button className="btn btn-primary btn-sm" style={{ marginTop:10 }} onClick={()=>setTab('modelos')}>Gerenciar modelos</button>}
               </div>
             </div>
-          ) : execHoje.map(ex => {
-            const parsed = parseExec(ex)
-            return (
-              <ExecucaoCard
-                key={ex.id}
-                ex={parsed}
-                isAdmin={isAdmin}
-                today={today}
-                onCheck={checkItem}
-                onDelete={deleteExec}
-                expanded={!!expanded[ex.id]}
-                onToggle={()=>toggleExpand(ex.id)}
-              />
-            )
-          })}
+          ) : execHoje.map(ex => (
+            <ExecucaoCard
+              key={ex.id}
+              ex={parseExec(ex)}
+              isAdmin={isAdmin}
+              today={today}
+              onCheck={checkItem}
+              onDelete={deleteExec}
+              expanded={!!expanded[ex.id]}
+              onToggle={() => toggleExpand(ex.id)}
+              vencido={false}
+            />
+          ))}
         </div>
       )}
 
-      {/* ── HISTÓRICO ── */}
-      {tab==='historico' && (
+      {/* ── VENCIDOS (admin) ── */}
+      {tab==='vencidos' && isAdmin && (
         <div>
-          {execHist.length===0 ? (
-            <div className="card"><div className="empty-state"><div className="empty-icon">📋</div><div className="empty-title">Sem histórico</div></div></div>
-          ) : execHist.map(ex => {
-            const parsed = parseExec(ex)
-            return (
-              <ExecucaoCard
-                key={ex.id}
-                ex={parsed}
-                isAdmin={isAdmin}
-                today={today}
-                onCheck={checkItem}
-                onDelete={deleteExec}
-                expanded={!!expanded[ex.id]}
-                onToggle={()=>toggleExpand(ex.id)}
-              />
-            )
-          })}
+          {/* Aviso explicativo */}
+          <div style={{ background:'var(--red-light)', border:'1px solid #FECACA', borderRadius:'var(--radius-sm)', padding:'12px 16px', marginBottom:14, display:'flex', alignItems:'center', gap:10 }}>
+            <AlertTriangle size={16} style={{ color:'var(--red)', flexShrink:0 }}/>
+            <span style={{ fontSize:13, color:'var(--red)', fontWeight:600 }}>
+              {qtdVencidos} checklist(s) não concluído(s) de dias anteriores. Esses itens não são mais editáveis pelos funcionários.
+            </span>
+          </div>
+
+          {execVencidos.length === 0 ? (
+            <div className="card">
+              <div className="empty-state">
+                <div className="empty-icon">✅</div>
+                <div className="empty-title">Nenhum vencido em aberto</div>
+                <div className="empty-desc">Todos os checklists anteriores foram concluídos.</div>
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* Agrupado por funcionário */}
+              {(() => {
+                const porFunc = {}
+                execVencidos.forEach(e => {
+                  const key = e.responsavel || 'Sem responsável'
+                  if (!porFunc[key]) porFunc[key] = []
+                  porFunc[key].push(e)
+                })
+                return Object.entries(porFunc).map(([nome, lista]) => (
+                  <div key={nome} style={{ marginBottom:20 }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
+                      <div style={{ width:28, height:28, borderRadius:'50%', background:'var(--red-light)', color:'var(--red)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:700, flexShrink:0 }}>
+                        {nome.charAt(0).toUpperCase()}
+                      </div>
+                      <span style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:14 }}>{nome}</span>
+                      <span className="badge badge-red">{lista.length} vencido(s)</span>
+                    </div>
+                    {lista.map(ex => (
+                      <ExecucaoCard
+                        key={ex.id}
+                        ex={parseExec(ex)}
+                        isAdmin={isAdmin}
+                        today={today}
+                        onCheck={checkItem}
+                        onDelete={deleteExec}
+                        expanded={!!expanded[ex.id]}
+                        onToggle={() => toggleExpand(ex.id)}
+                        vencido={true}
+                      />
+                    ))}
+                  </div>
+                ))
+              })()}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── HISTÓRICO (admin) ── */}
+      {tab==='historico' && isAdmin && (
+        <div>
+          {execHist.length === 0 ? (
+            <div className="card">
+              <div className="empty-state">
+                <div className="empty-icon">📋</div>
+                <div className="empty-title">Sem histórico</div>
+              </div>
+            </div>
+          ) : execHist.map(ex => (
+            <ExecucaoCard
+              key={ex.id}
+              ex={parseExec(ex)}
+              isAdmin={isAdmin}
+              today={today}
+              onCheck={checkItem}
+              onDelete={deleteExec}
+              expanded={!!expanded[ex.id]}
+              onToggle={() => toggleExpand(ex.id)}
+              vencido={ex.status !== 'Concluído'}
+            />
+          ))}
         </div>
       )}
 
       {/* ── MODELOS (admin) ── */}
       {tab==='modelos' && isAdmin && (
         <div>
-          <div style={{ display:'flex',justifyContent:'flex-end',marginBottom:12 }}>
+          <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:12 }}>
             <button className="btn btn-primary btn-sm" onClick={openCreateModelo}><Plus size={14}/> Novo Modelo</button>
           </div>
-          {modelos.length===0 ? (
+          {modelos.length === 0 ? (
             <div className="card"><div className="empty-state"><div className="empty-icon">📋</div><div className="empty-title">Nenhum modelo criado</div></div></div>
           ) : modelos.map(m => {
             const parsed = parseModelo(m)
             return (
               <div key={m.id} className="card" style={{ marginBottom:10 }}>
-                <div style={{ padding:'14px 18px',display:'flex',alignItems:'center',gap:12 }}>
-                  <div style={{ width:42,height:42,borderRadius:8,background:'var(--accent-light)',color:'var(--accent)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,flexShrink:0 }}>📋</div>
+                <div style={{ padding:'14px 18px', display:'flex', alignItems:'center', gap:12 }}>
+                  <div style={{ width:42, height:42, borderRadius:8, background:'var(--accent-light)', color:'var(--accent)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, flexShrink:0 }}>📋</div>
                   <div style={{ flex:1 }}>
-                    <div style={{ fontFamily:'var(--font-display)',fontWeight:700,fontSize:14 }}>{m.nome}</div>
-                    <div style={{ display:'flex',gap:8,marginTop:4,flexWrap:'wrap' }}>
+                    <div style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:14 }}>{m.nome}</div>
+                    <div style={{ display:'flex', gap:8, marginTop:4, flexWrap:'wrap' }}>
                       <span className="badge badge-gray">{m.setor}</span>
                       <span className="badge badge-teal">{m.recorrencia}</span>
-                      <span style={{ fontSize:12,color:'var(--text-3)' }}>{parsed.itens.length} itens</span>
+                      <span style={{ fontSize:12, color:'var(--text-3)' }}>{parsed.itens.length} itens</span>
                     </div>
                   </div>
-                  <div style={{ display:'flex',gap:6,flexWrap:'wrap',justifyContent:'flex-end' }}>
-                    <button className="btn btn-primary btn-sm" onClick={()=>abrirAtribuir(parsed)}><UserCheck size={13}/> Atribuir</button>
-                    <button className="btn btn-icon btn-ghost btn-sm" onClick={()=>openEditModelo(parsed)}><Edit3 size={13}/></button>
-                    <button className="btn btn-icon btn-danger btn-sm" onClick={()=>deleteModelo(m.id)}><Trash2 size={13}/></button>
+                  <div style={{ display:'flex', gap:6, flexWrap:'wrap', justifyContent:'flex-end' }}>
+                    <button className="btn btn-primary btn-sm" onClick={() => abrirAtribuir(parsed)}><UserCheck size={13}/> Atribuir</button>
+                    <button className="btn btn-icon btn-ghost btn-sm" onClick={() => openEditModelo(parsed)}><Edit3 size={13}/></button>
+                    <button className="btn btn-icon btn-danger btn-sm" onClick={() => deleteModelo(m.id)}><Trash2 size={13}/></button>
                   </div>
                 </div>
-                <div style={{ borderTop:'1px solid var(--border)',padding:'8px 18px 12px' }}>
-                  {parsed.itens.slice(0,3).map(it=>(
-                    <div key={it.id} style={{ display:'flex',alignItems:'center',gap:8,padding:'4px 0',fontSize:13,color:'var(--text-2)' }}>
-                      <div style={{ width:14,height:14,borderRadius:3,border:'1.5px solid var(--border-2)',flexShrink:0 }}/>
-                      {it.descricao}{it.obrigatorio&&<span style={{ fontSize:10,color:'var(--red)',fontWeight:600 }}>*</span>}
+                <div style={{ borderTop:'1px solid var(--border)', padding:'8px 18px 12px' }}>
+                  {parsed.itens.slice(0,3).map(it => (
+                    <div key={it.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'4px 0', fontSize:13, color:'var(--text-2)' }}>
+                      <div style={{ width:14, height:14, borderRadius:3, border:'1.5px solid var(--border-2)', flexShrink:0 }}/>
+                      {it.descricao}{it.obrigatorio && <span style={{ fontSize:10, color:'var(--red)', fontWeight:600 }}>*</span>}
                     </div>
                   ))}
-                  {parsed.itens.length>3&&<div style={{ fontSize:12,color:'var(--text-3)',marginTop:4 }}>+ {parsed.itens.length-3} itens</div>}
+                  {parsed.itens.length > 3 && <div style={{ fontSize:12, color:'var(--text-3)', marginTop:4 }}>+ {parsed.itens.length-3} itens</div>}
                 </div>
               </div>
             )
@@ -400,49 +504,49 @@ export default function Checklists() {
         </div>
       )}
 
-      {/* Modal atribuir */}
-      <Modal open={modalAtribuir} onClose={()=>setModalAtribuir(false)} title={`Atribuir: ${atribuirModelo?.nome||''}`}
-        footer={<><button className="btn btn-secondary btn-sm" onClick={()=>setModalAtribuir(false)}>Cancelar</button><button className="btn btn-primary btn-sm" onClick={confirmarAtribuicao}><UserCheck size={13}/> Atribuir</button></>}>
-        <div style={{ background:'var(--surface-2)',borderRadius:'var(--radius-sm)',padding:'12px 16px',fontSize:13,color:'var(--text-2)',lineHeight:1.5 }}>
-          O funcionário selecionado poderá visualizar e marcar os itens na data indicada.
+      {/* ── Modal atribuir ── */}
+      <Modal open={modalAtribuir} onClose={() => setModalAtribuir(false)} title={`Atribuir: ${atribuirModelo?.nome||''}`}
+        footer={<><button className="btn btn-secondary btn-sm" onClick={() => setModalAtribuir(false)}>Cancelar</button><button className="btn btn-primary btn-sm" onClick={confirmarAtribuicao}><UserCheck size={13}/> Atribuir</button></>}>
+        <div style={{ background:'var(--surface-2)', borderRadius:'var(--radius-sm)', padding:'12px 16px', fontSize:13, color:'var(--text-2)', lineHeight:1.5 }}>
+          O funcionário poderá marcar os itens apenas na data indicada. Após o dia, o checklist fica vencido.
         </div>
         <div className="form-group">
           <label className="form-label">Funcionário <span>*</span></label>
-          <select className="form-input form-select" value={atribuirForm.funcionario_id} onChange={e=>setAtribuirForm(f=>({...f,funcionario_id:e.target.value}))}>
+          <select className="form-input form-select" value={atribuirForm.funcionario_id} onChange={e => setAtribuirForm(f => ({...f, funcionario_id:e.target.value}))}>
             <option value="">Selecione…</option>
-            {funcionarios.map(f=><option key={f.id} value={f.id}>{f.nome} — {f.cargo}</option>)}
+            {funcionarios.map(f => <option key={f.id} value={f.id}>{f.nome} — {f.cargo}</option>)}
           </select>
         </div>
         <div className="form-group">
           <label className="form-label">Data</label>
-          <input type="date" className="form-input" value={atribuirForm.data} onChange={e=>setAtribuirForm(f=>({...f,data:e.target.value}))}/>
+          <input type="date" className="form-input" value={atribuirForm.data} onChange={e => setAtribuirForm(f => ({...f, data:e.target.value}))}/>
         </div>
       </Modal>
 
-      {/* Modal modelo */}
-      <Modal open={modalModelo} onClose={()=>setModalModelo(false)} title={editModelo?'Editar Modelo':'Novo Modelo'} size="lg"
-        footer={<><button className="btn btn-secondary btn-sm" onClick={()=>setModalModelo(false)}>Cancelar</button><button className="btn btn-primary btn-sm" onClick={saveModelo}>{editModelo?'Salvar':'Criar'}</button></>}>
-        <div className="form-group"><label className="form-label">Nome <span>*</span></label><input className="form-input" placeholder="Ex: Abertura Diária" value={formModelo.nome} onChange={e=>setFormModelo(f=>({...f,nome:e.target.value}))}/></div>
+      {/* ── Modal modelo ── */}
+      <Modal open={modalModelo} onClose={() => setModalModelo(false)} title={editModelo ? 'Editar Modelo' : 'Novo Modelo'} size="lg"
+        footer={<><button className="btn btn-secondary btn-sm" onClick={() => setModalModelo(false)}>Cancelar</button><button className="btn btn-primary btn-sm" onClick={saveModelo}>{editModelo ? 'Salvar' : 'Criar'}</button></>}>
+        <div className="form-group"><label className="form-label">Nome <span>*</span></label><input className="form-input" placeholder="Ex: Abertura Diária" value={formModelo.nome} onChange={e => setFormModelo(f => ({...f, nome:e.target.value}))}/></div>
         <div className="form-row">
-          <div className="form-group"><label className="form-label">Setor</label><select className="form-input form-select" value={formModelo.setor} onChange={e=>setFormModelo(f=>({...f,setor:e.target.value}))}>{SETORES.map(s=><option key={s}>{s}</option>)}</select></div>
-          <div className="form-group"><label className="form-label">Recorrência</label><select className="form-input form-select" value={formModelo.recorrencia} onChange={e=>setFormModelo(f=>({...f,recorrencia:e.target.value}))}>{RECORRENCIAS.map(r=><option key={r}>{r}</option>)}</select></div>
+          <div className="form-group"><label className="form-label">Setor</label><select className="form-input form-select" value={formModelo.setor} onChange={e => setFormModelo(f => ({...f, setor:e.target.value}))}>{SETORES.map(s=><option key={s}>{s}</option>)}</select></div>
+          <div className="form-group"><label className="form-label">Recorrência</label><select className="form-input form-select" value={formModelo.recorrencia} onChange={e => setFormModelo(f => ({...f, recorrencia:e.target.value}))}>{RECORRENCIAS.map(r=><option key={r}>{r}</option>)}</select></div>
         </div>
         <div className="form-group">
           <label className="form-label">Itens</label>
-          <div style={{ display:'flex',gap:6,marginBottom:8 }}>
-            <input className="form-input" placeholder="Descrição do item…" value={novoItem} onChange={e=>setNovoItem(e.target.value)} onKeyDown={e=>e.key==='Enter'&&(e.preventDefault(),addItemModelo())}/>
+          <div style={{ display:'flex', gap:6, marginBottom:8 }}>
+            <input className="form-input" placeholder="Descrição do item…" value={novoItem} onChange={e => setNovoItem(e.target.value)} onKeyDown={e => e.key==='Enter' && (e.preventDefault(), addItemModelo())}/>
             <button type="button" className="btn btn-secondary btn-sm" style={{ flexShrink:0 }} onClick={addItemModelo}>Add</button>
           </div>
-          <div style={{ border:'1.5px solid var(--border)',borderRadius:'var(--radius-sm)',overflow:'hidden' }}>
-            {formModelo.itens.length===0&&<div style={{ padding:'18px',textAlign:'center',color:'var(--text-3)',fontSize:13 }}>Nenhum item</div>}
-            {formModelo.itens.map((it,idx)=>(
-              <div key={it.id} style={{ display:'flex',alignItems:'center',gap:10,padding:'10px 14px',borderBottom:idx<formModelo.itens.length-1?'1px solid var(--border)':'none',background:'var(--surface)' }}>
-                <span style={{ fontSize:12,color:'var(--text-3)',width:20,textAlign:'right',flexShrink:0 }}>{idx+1}</span>
-                <span style={{ flex:1,fontSize:13.5 }}>{it.descricao}</span>
-                <button type="button" onClick={()=>toggleObrigatorio(it.id)} style={{ fontSize:11,padding:'2px 8px',borderRadius:99,border:'1.5px solid',cursor:'pointer',fontWeight:600,background:it.obrigatorio?'var(--red-light)':'var(--surface-2)',color:it.obrigatorio?'var(--red)':'var(--text-3)',borderColor:it.obrigatorio?'#FECACA':'var(--border)' }}>
-                  {it.obrigatorio?'Obrig.':'Opcional'}
+          <div style={{ border:'1.5px solid var(--border)', borderRadius:'var(--radius-sm)', overflow:'hidden' }}>
+            {formModelo.itens.length === 0 && <div style={{ padding:'18px', textAlign:'center', color:'var(--text-3)', fontSize:13 }}>Nenhum item adicionado</div>}
+            {formModelo.itens.map((it,idx) => (
+              <div key={it.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 14px', borderBottom:idx<formModelo.itens.length-1?'1px solid var(--border)':'none', background:'var(--surface)' }}>
+                <span style={{ fontSize:12, color:'var(--text-3)', width:20, textAlign:'right', flexShrink:0 }}>{idx+1}</span>
+                <span style={{ flex:1, fontSize:13.5 }}>{it.descricao}</span>
+                <button type="button" onClick={() => toggleObrigatorio(it.id)} style={{ fontSize:11, padding:'2px 8px', borderRadius:99, border:'1.5px solid', cursor:'pointer', fontWeight:600, background:it.obrigatorio?'var(--red-light)':'var(--surface-2)', color:it.obrigatorio?'var(--red)':'var(--text-3)', borderColor:it.obrigatorio?'#FECACA':'var(--border)' }}>
+                  {it.obrigatorio ? 'Obrig.' : 'Opcional'}
                 </button>
-                <button type="button" onClick={()=>removeItemModelo(it.id)} style={{ color:'var(--text-3)',background:'none',border:'none',cursor:'pointer',display:'flex',padding:2 }}><X size={14}/></button>
+                <button type="button" onClick={() => removeItemModelo(it.id)} style={{ color:'var(--text-3)', background:'none', border:'none', cursor:'pointer', display:'flex', padding:2 }}><X size={14}/></button>
               </div>
             ))}
           </div>
