@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Plus, Trash2, Edit3, Save, Building, Users,
   Layers, Tag, Briefcase, Eye, EyeOff, KeyRound,
@@ -125,24 +125,26 @@ export default function Configuracoes() {
   const [novaSenhaConf, setNovaSenhaConf] = useState('')
   const [showNovaSenha, setShowNovaSenha] = useState(false)
 
-  const reloadUsers = useCallback(async () => {
+  // Função estável — NÃO vai em array de deps do useEffect para evitar loop infinito
+  async function reloadUsers() {
     if (isSupabaseMode()) {
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('usuarios')
         .select('id, nome, email, cargo, setor, role, ativo')
         .order('nome')
-      if (!error) setUsuarios(data || [])
+      setUsuarios(data || [])
     } else {
       setUsuarios(listLocalUsers().map(u => u.profile ? { ...u.profile, email: u.email } : u))
     }
-  }, [listLocalUsers])
+  }
 
+  // Roda apenas uma vez na montagem + ouve evento de mudança local
   useEffect(() => {
     reloadUsers()
     const handler = () => reloadUsers()
     window.addEventListener('festeventos_users_changed', handler)
     return () => window.removeEventListener('festeventos_users_changed', handler)
-  }, [reloadUsers])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleCreateUser() {
     const { nome, email, password, confirmPassword, cargo, setor, role } = formUsuario

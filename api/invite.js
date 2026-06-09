@@ -66,6 +66,7 @@ export default async function handler(req, res) {
     .upsert({
       id:         authData.user.id,
       empresa_id: callerProfile.empresa_id,
+      email,
       nome, cargo, setor, role,
       ativo: true,
     }, { onConflict: 'id' })
