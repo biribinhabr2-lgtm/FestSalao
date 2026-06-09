@@ -127,6 +127,8 @@ export default function Checklists() {
 
   const [tab, setTab]           = useState('hoje')
   const [expanded, setExpanded] = useState({})
+  const [filtroFunc, setFiltroFunc]     = useState('')   // filtro por funcionário na aba Atribuídos
+  const [filtroStatus, setFiltroStatus] = useState('')   // filtro por status
 
   /* Modelos */
   const [modalModelo, setModalModelo] = useState(false)
@@ -154,9 +156,17 @@ export default function Checklists() {
     ? execucoes.filter(e => e.data < today && e.status !== 'Concluído')
     : []
 
-  // Histórico: todos os do passado (admin), ou só concluídos do passado (funcionário – mas a aba nem aparece)
+  // Histórico: todos os do passado (admin)
   const execHist = isAdmin
     ? execucoes.filter(e => e.data < today)
+    : []
+
+  // Atribuídos: TODOS (passado + hoje + futuro), com filtros — admin only
+  const execAtribuidos = isAdmin
+    ? execucoes
+        .filter(e => !filtroFunc   || e.funcionario_id === filtroFunc || e.responsavel === filtroFunc)
+        .filter(e => !filtroStatus || e.status === filtroStatus)
+        .sort((a, b) => (a.data < b.data ? 1 : -1))
     : []
 
   function toggleExpand(id) { setExpanded(s => ({ ...s, [id]: !s[id] })) }
@@ -324,6 +334,14 @@ export default function Checklists() {
           )}
         </div>
 
+        {/* Atribuídos — só admin */}
+        {isAdmin && (
+          <div className={`tab-item ${tab==='atribuidos'?'active':''}`} onClick={()=>setTab('atribuidos')}>
+            Atribuídos
+            <span className="badge badge-gray" style={{ marginLeft:6 }}>{execucoes.length}</span>
+          </div>
+        )}
+
         {/* Vencidos — só admin */}
         {isAdmin && (
           <div className={`tab-item ${tab==='vencidos'?'active':''}`} onClick={()=>setTab('vencidos')}
@@ -373,6 +391,105 @@ export default function Checklists() {
               vencido={false}
             />
           ))}
+        </div>
+      )}
+
+      {/* ── ATRIBUÍDOS (admin) ── */}
+      {tab==='atribuidos' && isAdmin && (
+        <div>
+          {/* Filtros */}
+          <div style={{ display:'flex', gap:8, marginBottom:14, flexWrap:'wrap' }}>
+            <select
+              className="form-input form-select"
+              style={{ width:'auto', minWidth:160 }}
+              value={filtroFunc}
+              onChange={e => setFiltroFunc(e.target.value)}
+            >
+              <option value="">Todos os funcionários</option>
+              {/* Lista única de responsáveis das execuções */}
+              {[...new Map(execucoes.map(e => [e.funcionario_id || e.responsavel, e])).values()]
+                .sort((a,b) => (a.responsavel||'').localeCompare(b.responsavel||''))
+                .map(e => (
+                  <option key={e.funcionario_id || e.responsavel} value={e.funcionario_id || e.responsavel}>
+                    {e.responsavel}
+                  </option>
+                ))
+              }
+            </select>
+            <select
+              className="form-input form-select"
+              style={{ width:'auto', minWidth:140 }}
+              value={filtroStatus}
+              onChange={e => setFiltroStatus(e.target.value)}
+            >
+              <option value="">Todos os status</option>
+              <option value="Pendente">Pendente</option>
+              <option value="Em andamento">Em andamento</option>
+              <option value="Concluído">Concluído</option>
+            </select>
+            {(filtroFunc || filtroStatus) && (
+              <button className="btn btn-secondary btn-sm" onClick={() => { setFiltroFunc(''); setFiltroStatus('') }}>
+                Limpar filtros
+              </button>
+            )}
+            <span style={{ marginLeft:'auto', fontSize:12.5, color:'var(--text-3)', alignSelf:'center' }}>
+              {execAtribuidos.length} resultado(s)
+            </span>
+          </div>
+
+          {execAtribuidos.length === 0 ? (
+            <div className="card">
+              <div className="empty-state">
+                <div className="empty-icon">📋</div>
+                <div className="empty-title">Nenhum checklist encontrado</div>
+                <div className="empty-desc">Tente ajustar os filtros ou atribua checklists na aba Modelos.</div>
+              </div>
+            </div>
+          ) : (
+            /* Agrupa por funcionário */
+            (() => {
+              const grupos = {}
+              execAtribuidos.forEach(e => {
+                const key = e.responsavel || 'Sem responsável'
+                if (!grupos[key]) grupos[key] = []
+                grupos[key].push(e)
+              })
+              return Object.entries(grupos).map(([nome, lista]) => (
+                <div key={nome} style={{ marginBottom:20 }}>
+                  {/* Cabeçalho do grupo */}
+                  <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8, padding:'6px 0' }}>
+                    <div style={{ width:30, height:30, borderRadius:'50%', background:'var(--accent-light)', color:'var(--accent)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:700, flexShrink:0 }}>
+                      {nome.charAt(0).toUpperCase()}
+                    </div>
+                    <span style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:14 }}>{nome}</span>
+                    <span className="badge badge-gray">{lista.length} checklist(s)</span>
+                    <span className="badge badge-green" style={{ marginLeft:4 }}>
+                      {lista.filter(e => e.status === 'Concluído').length} concluído(s)
+                    </span>
+                    {lista.filter(e => e.status !== 'Concluído' && e.data < today).length > 0 && (
+                      <span className="badge badge-red">
+                        {lista.filter(e => e.status !== 'Concluído' && e.data < today).length} vencido(s)
+                      </span>
+                    )}
+                  </div>
+                  {/* Cards */}
+                  {lista.map(ex => (
+                    <ExecucaoCard
+                      key={ex.id}
+                      ex={parseExec(ex)}
+                      isAdmin={isAdmin}
+                      today={today}
+                      onCheck={checkItem}
+                      onDelete={deleteExec}
+                      expanded={!!expanded[ex.id]}
+                      onToggle={() => toggleExpand(ex.id)}
+                      vencido={ex.status !== 'Concluído' && ex.data < today}
+                    />
+                  ))}
+                </div>
+              ))
+            })()
+          )}
         </div>
       )}
 
