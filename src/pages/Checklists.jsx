@@ -210,13 +210,26 @@ export default function Checklists() {
   function toggleObrigatorio(id) { setFormModelo(f=>({...f,itens:f.itens.map(i=>i.id===id?{...i,obrigatorio:!i.obrigatorio}:i)})) }
   async function saveModelo() {
     if (!formModelo.nome) { toast.error('Nome obrigatório'); return }
-    const payload = { ...formModelo, itens: JSON.stringify(formModelo.itens) }
+    const payload = { nome: formModelo.nome, setor: formModelo.setor, recorrencia: formModelo.recorrencia, itens: JSON.stringify(formModelo.itens) }
+
+    // Retry defensivo: remove campos que a tabela não reconheça
+    async function tryOp(fn, p) {
+      let r = await fn(p)
+      if (r.error?.message?.includes("'itens'")) {
+        const { itens: _, ...sem } = p; r = await fn(sem)
+      }
+      if (r.error?.message?.includes("'setor'") || r.error?.message?.includes("'recorrencia'")) {
+        const { setor: _s, recorrencia: _r, ...sem } = p; r = await fn(sem)
+      }
+      return r
+    }
+
     if (editModelo) {
-      const { error } = await updateModelo(editModelo.id, payload)
+      const { error } = await tryOp(p => updateModelo(editModelo.id, p), payload)
       if (error) { toast.error('Erro ao atualizar: ' + error.message); return }
       toast.success('Modelo atualizado!')
     } else {
-      const { error } = await addModelo(payload)
+      const { error } = await tryOp(p => addModelo(p), payload)
       if (error) { toast.error('Erro ao criar: ' + error.message); return }
       toast.success('Modelo criado!')
     }
