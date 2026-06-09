@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   Plus, Trash2, Edit3, Save, Building, Users,
   Layers, Tag, Briefcase, Eye, EyeOff, KeyRound,
@@ -7,6 +7,8 @@ import {
 import Modal from '../components/ui/Modal'
 import { useToast } from '../components/ui/Toast'
 import { useAuth } from '../context/AuthContext'
+import { supabase } from '../lib/supabaseClient'
+import { isSupabaseMode } from '../hooks/useDb'
 
 const SETORES_INIT = ['Recreação','Eventos','Limpeza','Recepção','Cozinha','Gestão']
 const CARGOS_INIT  = ['Administrador','Coordenadora','Monitora','Monitor','Auxiliar','Recepcionista']
@@ -123,22 +125,30 @@ export default function Configuracoes() {
   const [novaSenhaConf, setNovaSenhaConf] = useState('')
   const [showNovaSenha, setShowNovaSenha] = useState(false)
 
-  function reloadUsers() {
-    setUsuarios(listLocalUsers().map(u => u.profile ? { ...u.profile, email: u.email } : u))
-  }
+  const reloadUsers = useCallback(async () => {
+    if (isSupabaseMode()) {
+      const { data, error } = await supabase
+        .from('usuarios')
+        .select('id, nome, email, cargo, setor, role, ativo')
+        .order('nome')
+      if (!error) setUsuarios(data || [])
+    } else {
+      setUsuarios(listLocalUsers().map(u => u.profile ? { ...u.profile, email: u.email } : u))
+    }
+  }, [listLocalUsers])
 
   useEffect(() => {
     reloadUsers()
     const handler = () => reloadUsers()
     window.addEventListener('festeventos_users_changed', handler)
     return () => window.removeEventListener('festeventos_users_changed', handler)
-  }, [])
+  }, [reloadUsers])
 
   async function handleCreateUser() {
     const { nome, email, password, confirmPassword, cargo, setor, role } = formUsuario
-    if (!nome.trim())      { toast.error('Nome obrigatório'); return }
-    if (!email.trim())     { toast.error('E-mail obrigatório'); return }
-    if (!password)         { toast.error('Senha obrigatória'); return }
+    if (!nome.trim())        { toast.error('Nome obrigatório'); return }
+    if (!email.trim())       { toast.error('E-mail obrigatório'); return }
+    if (!password)           { toast.error('Senha obrigatória'); return }
     if (password.length < 6) { toast.error('Senha deve ter pelo menos 6 caracteres'); return }
     if (password !== confirmPassword) { toast.error('As senhas não coincidem'); return }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { toast.error('E-mail inválido'); return }
@@ -147,39 +157,75 @@ export default function Configuracoes() {
       await createUser({ email, password, nome, cargo, setor, role })
       toast.success(`Usuário ${nome} criado com sucesso!`)
       setModalUsuario(false)
-      reloadUsers()
+      // Pequeno delay para o Supabase trigger criar o perfil antes de recarregar
+      setTimeout(() => reloadUsers(), isSupabaseMode() ? 800 : 0)
     } catch (err) {
       toast.error(err.message)
     }
   }
 
-  function handleToggleAtivo(email) {
+  async function handleToggleAtivo(u) {
     try {
-      toggleUserAtivo(email)
-      reloadUsers()
+      if (isSupabaseMode()) {
+        const { error } = await supabase
+          .from('usuarios')
+          .update({ ativo: !u.ativo })
+          .eq('id', u.id)
+        if (error) throw error
+      } else {
+        toggleUserAtivo(u.email)
+      }
+      await reloadUsers()
       toast.success('Status atualizado.')
     } catch (err) {
       toast.error(err.message)
     }
   }
 
-  function handleRemove(email, nome) {
-    if (!confirm(`Remover o acesso de ${nome}? Esta ação não pode ser desfeita.`)) return
+  async function handleRemove(u) {
+    if (!confirm(`Remover o acesso de ${u.nome}? Esta ação não pode ser desfeita.`)) return
     try {
-      removeUser(email)
-      reloadUsers()
-      toast.success(`Acesso de ${nome} removido.`)
+      if (isSupabaseMode()) {
+        // No Supabase: desativa em vez de deletar (precisa de service key pra deletar auth.users)
+        const { error } = await supabase
+          .from('usuarios')
+          .update({ ativo: false })
+          .eq('id', u.id)
+        if (error) throw error
+        toast.success(`Acesso de ${u.nome} desativado.`)
+      } else {
+        removeUser(u.email)
+        toast.success(`Acesso de ${u.nome} removido.`)
+      }
+      await reloadUsers()
     } catch (err) {
       toast.error(err.message)
     }
   }
 
-  function handleAlterarSenha() {
+  async function handleAlterarSenha() {
     if (!novaSenha)              { toast.error('Digite a nova senha'); return }
     if (novaSenha.length < 6)   { toast.error('Senha deve ter pelo menos 6 caracteres'); return }
     if (novaSenha !== novaSenhaConf) { toast.error('As senhas não coincidem'); return }
     try {
-      updateUserPassword(modalSenha, novaSenha)
+      if (isSupabaseMode()) {
+        // No Supabase, só é possível alterar a própria senha sem service key
+        // Para outros usuários, usa a API serverless
+        const session = await supabase.auth.getSession()
+        const token = session.data.session?.access_token
+        const res = await fetch('/api/invite', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ userId: modalSenha.id, password: novaSenha }),
+        })
+        if (!res.ok) {
+          const txt = await res.text()
+          let j = {}; try { j = JSON.parse(txt) } catch {}
+          throw new Error(j.error || `Erro ${res.status}`)
+        }
+      } else {
+        updateUserPassword(modalSenha.email, novaSenha)
+      }
       toast.success('Senha alterada com sucesso!')
       setModalSenha(null); setNovaSenha(''); setNovaSenhaConf('')
     } catch (err) {
@@ -277,7 +323,7 @@ export default function Configuracoes() {
                         </td>
                         <td>
                           <button
-                            onClick={() => !isMe && handleToggleAtivo(u.email)}
+                            onClick={() => !isMe && handleToggleAtivo(u)}
                             className={`badge ${u.ativo ? 'badge-green' : 'badge-red'}`}
                             style={{ cursor: isMe ? 'default' : 'pointer', border:'none', opacity: isMe ? .6 : 1 }}
                             title={isMe ? 'Não é possível desativar sua própria conta' : ''}
@@ -290,15 +336,15 @@ export default function Configuracoes() {
                             <button
                               className="btn btn-icon btn-ghost btn-sm"
                               title="Alterar senha"
-                              onClick={() => { setModalSenha(u.email); setNovaSenha(''); setNovaSenhaConf(''); setShowNovaSenha(false) }}
+                              onClick={() => { setModalSenha(u); setNovaSenha(''); setNovaSenhaConf(''); setShowNovaSenha(false) }}
                             >
                               <KeyRound size={13}/>
                             </button>
                             {!isMe && (
                               <button
                                 className="btn btn-icon btn-danger btn-sm"
-                                title="Remover acesso"
-                                onClick={() => handleRemove(u.email, u.nome)}
+                                title={isSupabaseMode() ? 'Desativar acesso' : 'Remover acesso'}
+                                onClick={() => handleRemove(u)}
                               >
                                 <Trash2 size={13}/>
                               </button>
@@ -509,7 +555,7 @@ export default function Configuracoes() {
       {/* ══ Modal: alterar senha ══ */}
       <Modal
         open={!!modalSenha}
-        onClose={() => setModalSenha(null)}
+        onClose={() => { setModalSenha(null); setNovaSenha(''); setNovaSenhaConf('') }}
         title="Alterar Senha"
         footer={
           <>
@@ -521,7 +567,7 @@ export default function Configuracoes() {
         }
       >
         <div style={{ padding:'10px 14px', background:'var(--surface-2)', borderRadius:'var(--radius-sm)', fontSize:13, color:'var(--text-2)', marginBottom:4 }}>
-          Alterando senha de: <strong>{modalSenha}</strong>
+          Alterando senha de: <strong>{modalSenha?.nome || modalSenha?.email}</strong>
         </div>
         <div className="form-group">
           <label className="form-label">Nova senha <span>*</span></label>

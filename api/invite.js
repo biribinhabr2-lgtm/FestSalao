@@ -3,10 +3,10 @@ import { createClient } from '@supabase/supabase-js'
 export default async function handler(req, res) {
   /* CORS */
   res.setHeader('Access-Control-Allow-Origin', '*')
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
+  res.setHeader('Access-Control-Allow-Methods', 'POST, PATCH, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
   if (req.method === 'OPTIONS') return res.status(204).end()
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
+  if (req.method !== 'POST' && req.method !== 'PATCH') return res.status(405).json({ error: 'Method not allowed' })
 
   const supabaseUrl = process.env.VITE_SUPABASE_URL
   const serviceKey  = process.env.SUPABASE_SERVICE_KEY
@@ -31,6 +31,15 @@ export default async function handler(req, res) {
 
   if (callerProfile?.role !== 'admin') {
     return res.status(403).json({ error: 'Apenas administradores podem criar usuários' })
+  }
+
+  /* ── PATCH: alterar senha de outro usuário ── */
+  if (req.method === 'PATCH') {
+    const { userId, password: newPassword } = req.body
+    if (!userId || !newPassword) return res.status(400).json({ error: 'userId e password são obrigatórios' })
+    const { error } = await supabase.auth.admin.updateUserById(userId, { password: newPassword })
+    if (error) return res.status(400).json({ error: error.message })
+    return res.status(200).json({ ok: true })
   }
 
   const { email, password, nome, cargo, setor, role } = req.body
