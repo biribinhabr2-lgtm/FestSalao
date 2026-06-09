@@ -103,7 +103,7 @@ export default function Checklists() {
   const toast = useToast()
 
   const { rows: modelos,   loading: lm, add: addModelo,   update: updateModelo, remove: removeModelo }   = useTable('checklist_modelos',    { seedData: mockChecklistModelos })
-  const { rows: execucoes, loading: le, add: addExec,      remove: removeExec,   setRows: setExecs }      = useTable('checklist_execucoes',   { seedData: mockExecucoes, orderBy: 'data', orderAsc: false })
+  const { rows: execucoes, loading: le, add: addExec, update: updateExec, remove: removeExec, setRows: setExecs } = useTable('checklist_execucoes', { seedData: mockExecucoes, orderBy: 'data', orderAsc: false })
   const { funcionarios } = useFuncionarios()
 
   const [tab, setTab]         = useState('hoje')
@@ -135,19 +135,30 @@ export default function Checklists() {
 
   function toggleExpand(id) { setExpanded(s => ({ ...s, [id]: !s[id] })) }
 
-  /* Marcar item — normaliza itens (pode vir como string JSON do Supabase) */
-  function checkItem(execId, itemId) {
+  /* Marcar item — atualiza local + persiste no banco/localStorage */
+  async function checkItem(execId, itemId) {
+    // 1. Calcula novo estado
+    let updated = null
     setExecs(prev => prev.map(ex => {
       if (ex.id !== execId) return ex
       const rawItens = typeof ex.itens === 'string'
         ? (() => { try { return JSON.parse(ex.itens) } catch { return [] } })()
         : (ex.itens || [])
-      const itens  = rawItens.map(it => it.id===itemId ? {...it,feito:!it.feito} : it)
+      const itens  = rawItens.map(it => it.id===itemId ? {...it, feito:!it.feito} : it)
       const total  = itens.length
       const feitos = itens.filter(i=>i.feito).length
-      const status = feitos===total?'Concluído':feitos>0?'Em andamento':'Pendente'
+      const status = feitos===total ? 'Concluído' : feitos>0 ? 'Em andamento' : 'Pendente'
+      updated = { itens, status }
       return { ...ex, itens, status }
     }))
+
+    // 2. Persiste no Supabase / localStorage
+    if (updated) {
+      await updateExec(execId, {
+        itens:  JSON.stringify(updated.itens),
+        status: updated.status,
+      })
+    }
   }
 
   /* Remover execução */
