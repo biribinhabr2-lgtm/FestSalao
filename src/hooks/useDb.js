@@ -68,13 +68,14 @@ export function useTable(tableName, opts = {}) {
       saveLocal([n, ...rows])
       return { data: n, error: null }
     }
-    const { data, error } = await supabase
-      .from(tableName)
-      .insert({ ...item, empresa_id: profile?.empresa_id, criado_por: profile?.id })
-      .select(select)
-      .single()
-    if (!error) setRows(r => [data, ...r])
-    return { data, error }
+    // Tenta com empresa_id + criado_por; se a tabela não tiver essas colunas, tenta sem
+    const fullPayload = { ...item, empresa_id: profile?.empresa_id, criado_por: profile?.id }
+    let res = await supabase.from(tableName).insert(fullPayload).select(select).single()
+    if (res.error?.message?.includes('criado_por') || res.error?.message?.includes('empresa_id')) {
+      res = await supabase.from(tableName).insert(item).select(select).single()
+    }
+    if (!res.error) setRows(r => [res.data, ...r])
+    return { data: res.data, error: res.error }
   }
 
   /* ── Atualizar ── */
