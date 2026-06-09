@@ -124,6 +124,8 @@ export default function Configuracoes() {
   const [novaSenha, setNovaSenha] = useState('')
   const [novaSenhaConf, setNovaSenhaConf] = useState('')
   const [showNovaSenha, setShowNovaSenha] = useState(false)
+  const [modalEditar, setModalEditar] = useState(null) // usuário sendo editado
+  const [formEditar, setFormEditar]   = useState({ nome:'', cargo:'', setor:'', role:'funcionario' })
 
   // Função estável — NÃO vai em array de deps do useEffect para evitar loop infinito
   async function reloadUsers() {
@@ -235,6 +237,32 @@ export default function Configuracoes() {
     }
   }
 
+  async function handleEditarUsuario() {
+    if (!formEditar.nome.trim()) { toast.error('Nome obrigatório'); return }
+    try {
+      if (isSupabaseMode()) {
+        const { error } = await supabase
+          .from('usuarios')
+          .update({ nome: formEditar.nome.trim(), cargo: formEditar.cargo, setor: formEditar.setor, role: formEditar.role })
+          .eq('id', modalEditar.id)
+        if (error) throw error
+      } else {
+        // modo local: atualiza no localStorage
+        const users = JSON.parse(localStorage.getItem('festeventos_users') || '{}')
+        const key = modalEditar.email?.toLowerCase()
+        if (key && users[key]) {
+          users[key].profile = { ...users[key].profile, nome: formEditar.nome.trim(), cargo: formEditar.cargo, setor: formEditar.setor, role: formEditar.role }
+          localStorage.setItem('festeventos_users', JSON.stringify(users))
+        }
+      }
+      toast.success('Usuário atualizado!')
+      setModalEditar(null)
+      await reloadUsers()
+    } catch (err) {
+      toast.error(err.message)
+    }
+  }
+
   const tabs = [
     ['usuarios',  'Usuários & Acessos', Users],
     ['empresa',   'Empresa',            Building],
@@ -335,6 +363,16 @@ export default function Configuracoes() {
                         </td>
                         <td>
                           <div style={{ display:'flex', gap:4 }}>
+                            <button
+                              className="btn btn-icon btn-ghost btn-sm"
+                              title="Editar dados"
+                              onClick={() => {
+                                setFormEditar({ nome: u.nome||'', cargo: u.cargo||'', setor: u.setor||'', role: u.role||'funcionario' })
+                                setModalEditar(u)
+                              }}
+                            >
+                              <Edit3 size={13}/>
+                            </button>
                             <button
                               className="btn btn-icon btn-ghost btn-sm"
                               title="Alterar senha"
@@ -551,6 +589,63 @@ export default function Configuracoes() {
         </div>
         <div style={{ fontSize:12, color:'var(--text-3)' }}>
           O usuário usará este e-mail e senha para fazer login no sistema.
+        </div>
+      </Modal>
+
+      {/* ══ Modal: editar usuário ══ */}
+      <Modal
+        open={!!modalEditar}
+        onClose={() => setModalEditar(null)}
+        title="Editar Usuário"
+        footer={
+          <>
+            <button className="btn btn-secondary btn-sm" onClick={() => setModalEditar(null)}>Cancelar</button>
+            <button className="btn btn-primary btn-sm" onClick={handleEditarUsuario}>
+              <Save size={13}/> Salvar alterações
+            </button>
+          </>
+        }
+      >
+        <div style={{ padding:'10px 14px', background:'var(--surface-2)', borderRadius:'var(--radius-sm)', fontSize:13, color:'var(--text-2)', marginBottom:4 }}>
+          Editando: <strong>{modalEditar?.email}</strong>
+        </div>
+        <div className="form-group">
+          <label className="form-label">Nome completo <span>*</span></label>
+          <input className="form-input" placeholder="Nome do usuário"
+            value={formEditar.nome} onChange={e => setFormEditar(f => ({...f, nome: e.target.value}))} />
+        </div>
+        <div className="form-row">
+          <div className="form-group">
+            <label className="form-label">Cargo</label>
+            <select className="form-input form-select" value={formEditar.cargo}
+              onChange={e => setFormEditar(f => ({...f, cargo: e.target.value}))}>
+              {cargos.map(c => <option key={c}>{c}</option>)}
+            </select>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Setor</label>
+            <select className="form-input form-select" value={formEditar.setor}
+              onChange={e => setFormEditar(f => ({...f, setor: e.target.value}))}>
+              {setores.map(s => <option key={s}>{s}</option>)}
+            </select>
+          </div>
+        </div>
+        <div className="form-group">
+          <label className="form-label">Tipo de acesso</label>
+          <div style={{ display:'flex', gap:8 }}>
+            <button type="button"
+              className={`btn btn-sm ${formEditar.role==='funcionario' ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ flex:1, justifyContent:'center', background: formEditar.role==='funcionario' ? 'var(--teal)' : undefined, borderColor: formEditar.role==='funcionario' ? 'var(--teal)' : undefined }}
+              onClick={() => setFormEditar(f => ({...f, role:'funcionario'}))}>
+              👤 Funcionário
+            </button>
+            <button type="button"
+              className={`btn btn-sm ${formEditar.role==='admin' ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ flex:1, justifyContent:'center' }}
+              onClick={() => setFormEditar(f => ({...f, role:'admin'}))}>
+              👑 Administrador
+            </button>
+          </div>
         </div>
       </Modal>
 
