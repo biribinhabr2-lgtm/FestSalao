@@ -81,9 +81,15 @@ export function useTable(tableName, opts = {}) {
   /* ── Atualizar ── */
   async function update(id, changes) {
     if (mode === 'local') {
-      const next = rows.map(r => r.id === id ? { ...r, ...changes } : r)
-      saveLocal(next)
-      return { data: next.find(r => r.id === id), error: null }
+      // Usa setRows com updater funcional para ler o estado mais recente
+      let updated = null
+      setRows(prev => {
+        const next = prev.map(r => r.id === id ? { ...r, ...changes } : r)
+        updated = next
+        localStorage.setItem(lsKey, JSON.stringify(next))
+        return next
+      })
+      return { data: updated?.find(r => r.id === id) ?? null, error: null }
     }
     const { data, error } = await supabase
       .from(tableName)
