@@ -135,11 +135,14 @@ export default function Checklists() {
 
   function toggleExpand(id) { setExpanded(s => ({ ...s, [id]: !s[id] })) }
 
-  /* Marcar item */
+  /* Marcar item — normaliza itens (pode vir como string JSON do Supabase) */
   function checkItem(execId, itemId) {
     setExecs(prev => prev.map(ex => {
       if (ex.id !== execId) return ex
-      const itens  = (ex.itens||[]).map(it => it.id===itemId ? {...it,feito:!it.feito} : it)
+      const rawItens = typeof ex.itens === 'string'
+        ? (() => { try { return JSON.parse(ex.itens) } catch { return [] } })()
+        : (ex.itens || [])
+      const itens  = rawItens.map(it => it.id===itemId ? {...it,feito:!it.feito} : it)
       const total  = itens.length
       const feitos = itens.filter(i=>i.feito).length
       const status = feitos===total?'Concluído':feitos>0?'Em andamento':'Pendente'
@@ -150,7 +153,8 @@ export default function Checklists() {
   /* Remover execução */
   async function deleteExec(id) {
     if (!confirm('Remover esta atribuição?')) return
-    await removeExec(id)
+    const { error } = await removeExec(id)
+    if (error) { toast.error('Erro: '+error.message); return }
     toast.success('Atribuição removida.')
   }
 
@@ -178,8 +182,13 @@ export default function Checklists() {
       status:         'Pendente',
       itens:          JSON.stringify(atribuirModelo.itens.map(i=>({...i,feito:false}))),
     }
-    const { error } = await addExec(payload)
-    if (error) { toast.error('Erro: '+error.message); return }
+    // tenta com todos os campos; se falhar por coluna faltando, tenta sem funcionario_id
+    let result = await addExec(payload)
+    if (result.error?.message?.includes('funcionario_id') || result.error?.message?.includes('responsavel') || result.error?.message?.includes('modelo_nome')) {
+      const { funcionario_id: _fi, responsavel: _r, modelo_nome: _mn, ...semExtra } = payload
+      result = await addExec({ ...semExtra, responsavel: func?.nome || '?' })
+    }
+    if (result.error) { toast.error('Erro: '+result.error.message); return }
     toast.success(`Checklist atribuído a ${func?.nome}!`)
     setModalAtribuir(false)
     setTab('hoje')
@@ -203,15 +212,21 @@ export default function Checklists() {
     if (!formModelo.nome) { toast.error('Nome obrigatório'); return }
     const payload = { ...formModelo, itens: JSON.stringify(formModelo.itens) }
     if (editModelo) {
-      await updateModelo(editModelo.id, payload); toast.success('Modelo atualizado!')
+      const { error } = await updateModelo(editModelo.id, payload)
+      if (error) { toast.error('Erro ao atualizar: ' + error.message); return }
+      toast.success('Modelo atualizado!')
     } else {
-      await addModelo(payload); toast.success('Modelo criado!')
+      const { error } = await addModelo(payload)
+      if (error) { toast.error('Erro ao criar: ' + error.message); return }
+      toast.success('Modelo criado!')
     }
     setModalModelo(false)
   }
   async function deleteModelo(id) {
     if (!confirm('Excluir este modelo?')) return
-    await removeModelo(id); toast.success('Modelo excluído.')
+    const { error } = await removeModelo(id)
+    if (error) { toast.error('Erro: '+error.message); return }
+    toast.success('Modelo excluído.')
   }
 
   /* Normaliza itens que podem vir como JSON string do Supabase */
