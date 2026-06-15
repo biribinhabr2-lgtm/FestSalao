@@ -3,16 +3,18 @@ import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import {
   Users, PartyPopper, Bell, CheckSquare,
-  Clock, Calendar, ChevronRight, TrendingUp, AlertCircle, Loader2
+  Clock, Calendar, ChevronRight, TrendingUp, AlertCircle, Loader2, Link2
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useTable } from '../hooks/useDb'
 import { mockEscalas, mockEventos, mockAvisos, mockExecucoes, mockMovimentacoes } from '../data/mockData'
+import { useEventosExternos, getAlocacao } from '../hooks/useAgendaExterna'
 
-const today = format(new Date(), 'yyyy-MM-dd')
+const today   = format(new Date(), 'yyyy-MM-dd')
+const em6m    = format(new Date(Date.now() + 180 * 86400_000), 'yyyy-MM-dd')
 
 function StatusBadge({ status }) {
-  const map = { 'Em andamento':'badge-orange', 'Agendado':'badge-blue', 'Concluído':'badge-green', 'Pendente':'badge-yellow' }
+  const map = { 'Em andamento':'badge-orange', 'Agendado':'badge-blue', 'Concluído':'badge-green', 'Pendente':'badge-yellow', 'confirmada':'badge-green', 'orcamento':'badge-blue', 'cancelada':'badge-red' }
   return <span className={`badge ${map[status]||'badge-gray'}`}>{status}</span>
 }
 
@@ -30,28 +32,28 @@ function Avatar({ nome, size = 28 }) {
 export default function Dashboard() {
   const { isAdmin, profile } = useAuth()
 
-  /* Lê dos mesmos stores que as outras páginas usam */
   const { rows: escalas,   loading: l1 } = useTable('escalas',            { seedData: mockEscalas,       orderBy: 'data',       orderAsc: true  })
   const { rows: eventos,   loading: l2 } = useTable('eventos',            { seedData: mockEventos,       orderBy: 'data',       orderAsc: true  })
   const { rows: avisos,    loading: l3 } = useTable('avisos',             { seedData: mockAvisos,        orderBy: 'criado_em',  orderAsc: false })
   const { rows: execucoes, loading: l4 } = useTable('checklist_execucoes',{ seedData: mockExecucoes,     orderBy: 'data',       orderAsc: false })
   const { rows: movs,      loading: l5 } = useTable('movimentacoes_caixa',{ seedData: mockMovimentacoes, orderBy: 'data',       orderAsc: false })
 
+  const { eventos: extEventos, loading: l6, erro: erroExt } = useEventosExternos(today, em6m)
+
   const loading = l1 || l2 || l3 || l4 || l5
 
-  /* ── Derivações ── */
-  const escalasHoje    = useMemo(() => escalas.filter(e => e.data === today), [escalas])
-  const eventosHoje    = useMemo(() => eventos.filter(e => e.data === today), [eventos])
-  const eventosProximos= useMemo(() => eventos.filter(e => e.data > today && e.status !== 'Concluído').slice(0,4), [eventos])
+  const escalasHoje     = useMemo(() => escalas.filter(e => e.data === today), [escalas])
+  const eventosHoje     = useMemo(() => eventos.filter(e => e.data === today), [eventos])
+  const extHoje         = useMemo(() => extEventos.filter(e => e.data === today), [extEventos])
+  const eventosProximos = useMemo(() => eventos.filter(e => e.data >= today && e.status !== 'Concluído').slice(0,3), [eventos])
+  const extProximos     = useMemo(() => extEventos.filter(e => e.data >= today).slice(0,3), [extEventos])
 
-  /* avisos não lidos — respeita chave local do usuário */
-  const lsLidosKey  = `feste_avisos_lidos_${profile?.id||'demo'}`
+  const lsLidosKey = `feste_avisos_lidos_${profile?.id||'demo'}`
   function getLidos() { try { return JSON.parse(localStorage.getItem(lsLidosKey)||'[]') } catch { return [] } }
   const avisosNaoLidos = useMemo(() => avisos.filter(a => !a.lido && !getLidos().includes(a.id)), [avisos])
 
-  const checksPendentes= useMemo(() => execucoes.filter(e => e.status !== 'Concluído' && e.data === today), [execucoes])
+  const checksPendentes = useMemo(() => execucoes.filter(e => e.status !== 'Concluído' && e.data === today), [execucoes])
 
-  /* financeiro do mês */
   const thisMonth = today.slice(0,7)
   const totFin = useMemo(() => {
     const mes = movs.filter(m => m.data?.slice(0,7) === thisMonth)
@@ -60,9 +62,7 @@ export default function Dashboard() {
     return { entradas:e, saidas:s, saldo:e-s }
   }, [movs])
 
-  function nomeFuncionario(es) {
-    return es.usuarios?.nome || es.funcionario || '?'
-  }
+  function nomeFuncionario(es) { return es.usuarios?.nome || es.funcionario || '?' }
 
   if (loading) return (
     <div className="page" style={{ display:'flex', alignItems:'center', justifyContent:'center', minHeight:300 }}>
@@ -70,9 +70,10 @@ export default function Dashboard() {
     </div>
   )
 
+  const totalFestasHoje = eventosHoje.length + extHoje.length
+
   return (
     <div className="page">
-      {/* Saudação */}
       <div style={{ marginBottom:20 }}>
         <h1 style={{ fontFamily:'var(--font-display)', fontSize:22, fontWeight:800, color:'var(--text)' }}>
           Bom dia, {profile?.nome?.split(' ')[0] || 'usuário'} 👋
@@ -90,7 +91,15 @@ export default function Dashboard() {
         </div>
         <div className="stat-card">
           <div className="stat-icon teal"><PartyPopper size={20}/></div>
-          <div><div className="stat-value">{eventosHoje.length}</div><div className="stat-label">Festas hoje</div></div>
+          <div>
+            <div className="stat-value" style={{ display:'flex', alignItems:'baseline', gap:6 }}>
+              {totalFestasHoje}
+              {extHoje.length > 0 && (
+                <span style={{ fontSize:11, fontWeight:600, color:'#6366f1' }}>+{extHoje.length} ext.</span>
+              )}
+            </div>
+            <div className="stat-label">Festas hoje</div>
+          </div>
         </div>
         <div className="stat-card">
           <div className="stat-icon yellow"><Bell size={20}/></div>
@@ -115,7 +124,7 @@ export default function Dashboard() {
               </div>
               <span className="badge badge-orange">{format(new Date(),'dd/MM')}</span>
             </div>
-            {eventosHoje.length === 0 && escalasHoje.length === 0 ? (
+            {eventosHoje.length === 0 && escalasHoje.length === 0 && extHoje.length === 0 ? (
               <div className="empty-state">
                 <div className="empty-icon">📅</div>
                 <div className="empty-title">Nenhum item hoje</div>
@@ -123,16 +132,53 @@ export default function Dashboard() {
               </div>
             ) : (
               <div>
+                {/* Eventos locais */}
                 {eventosHoje.map(ev => (
                   <div key={ev.id} className="list-item">
                     <div style={{ width:40,height:40,borderRadius:8,background:'var(--accent-light)',color:'var(--accent)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,flexShrink:0 }}>🎉</div>
                     <div style={{ flex:1 }}>
                       <div style={{ fontSize:13.5,fontWeight:600 }}>{ev.nome}</div>
-                      <div style={{ fontSize:12,color:'var(--text-2)',marginTop:2 }}>{ev.horario_inicio}–{ev.horario_fim}</div>
+                      <div style={{ fontSize:12,color:'var(--text-2)',marginTop:2 }}>
+                        {ev.horario_inicio}–{ev.horario_fim}
+                        {ev.criancas > 0 && ` · ${ev.criancas} crianças`}
+                      </div>
                     </div>
                     <StatusBadge status={ev.status}/>
                   </div>
                 ))}
+
+                {/* Eventos externos de hoje */}
+                {extHoje.map(ev => {
+                  const resps = getAlocacao(ev._ext_id)
+                  return (
+                    <div key={ev.id} className="list-item" style={{ borderLeft:'3px solid #6366f1', paddingLeft:10 }}>
+                      <div style={{ width:40,height:40,borderRadius:8,background:'#ede9fe',color:'#6366f1',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,flexShrink:0 }}>🔗</div>
+                      <div style={{ flex:1 }}>
+                        <div style={{ fontSize:13.5,fontWeight:600,display:'flex',alignItems:'center',gap:6 }}>
+                          {ev.titulo}
+                          <span style={{ fontSize:10,fontWeight:600,color:'#6366f1',background:'#ede9fe',borderRadius:4,padding:'1px 5px' }}>EXT</span>
+                        </div>
+                        <div style={{ fontSize:12,color:'var(--text-2)',marginTop:2 }}>
+                          {ev.hora_inicio && ev.hora_fim ? `${ev.hora_inicio}–${ev.hora_fim}` : ev.hora_inicio || ''}
+                          {ev.convidados > 0 && ` · ${ev.convidados} convidados`}
+                          {ev.criancas   > 0 && ` · ${ev.criancas} crianças`}
+                          {!ev.customer_nome && ev.convidados === 0 && ev.criancas === 0 && ' · sem detalhes'}
+                        </div>
+                        {ev.customer_nome && (
+                          <div style={{ fontSize:11,color:'var(--text-3)',marginTop:1 }}>👤 {ev.customer_nome}</div>
+                        )}
+                        {resps.length > 0 && (
+                          <div style={{ fontSize:11,color:'#6366f1',marginTop:2 }}>
+                            👥 {resps.join(', ')}
+                          </div>
+                        )}
+                      </div>
+                      <StatusBadge status={ev.status}/>
+                    </div>
+                  )
+                })}
+
+                {/* Escalas */}
                 {escalasHoje.map(es => (
                   <div key={es.id} className="list-item">
                     <div style={{ width:40,height:40,borderRadius:8,background:'var(--teal-light)',color:'var(--teal)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,flexShrink:0 }}>⏰</div>
@@ -147,7 +193,7 @@ export default function Dashboard() {
             )}
           </div>
 
-          {/* Próximos eventos */}
+          {/* Próximos Eventos (locais + externos) */}
           <div className="card">
             <div className="card-header">
               <div style={{ display:'flex', alignItems:'center', gap:8 }}>
@@ -156,25 +202,55 @@ export default function Dashboard() {
               </div>
               <a href="/eventos" style={{ fontSize:12,color:'var(--accent)',fontWeight:600 }}>Ver todos</a>
             </div>
-            {eventosProximos.length === 0 ? (
+            {eventosProximos.length === 0 && extProximos.length === 0 ? (
               <div className="empty-state">
                 <div className="empty-icon">🎂</div>
                 <div className="empty-title">Sem eventos futuros</div>
               </div>
             ) : (
               <div>
-                {eventosProximos.map(ev => (
-                  <div key={ev.id} className="list-item">
-                    <div style={{ width:38,height:38,borderRadius:8,background:'var(--surface-2)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',flexShrink:0 }}>
-                      <span style={{ fontSize:10,fontWeight:700,color:'var(--accent)' }}>{format(new Date(ev.data+'T00:00'),'MMM',{locale:ptBR}).toUpperCase()}</span>
-                      <span style={{ fontSize:16,fontWeight:800,lineHeight:1,color:'var(--text)' }}>{format(new Date(ev.data+'T00:00'),'dd')}</span>
+                {/* Mistura e ordena por data */}
+                {[
+                  ...eventosProximos.map(e => ({ ...e, _tipo:'local' })),
+                  ...extProximos.map(e => ({ ...e, _tipo:'ext' })),
+                ].sort((a,b) => (a.data||'').localeCompare(b.data||'')).map(ev => (
+                  ev._tipo === 'ext' ? (
+                    <div key={ev.id} className="list-item" style={{ borderLeft:'3px solid #6366f1', paddingLeft:10 }}>
+                      <div style={{ width:38,height:38,borderRadius:8,background:'#ede9fe',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',flexShrink:0 }}>
+                        <span style={{ fontSize:10,fontWeight:700,color:'#6366f1' }}>{format(new Date(ev.data+'T00:00'),'MMM',{locale:ptBR}).toUpperCase()}</span>
+                        <span style={{ fontSize:16,fontWeight:800,lineHeight:1,color:'#6366f1' }}>{format(new Date(ev.data+'T00:00'),'dd')}</span>
+                      </div>
+                      <div style={{ flex:1 }}>
+                        <div style={{ fontSize:13.5,fontWeight:600,display:'flex',alignItems:'center',gap:5 }}>
+                          {ev.titulo}
+                          <Link2 size={11} color="#6366f1"/>
+                        </div>
+                        <div style={{ fontSize:12,color:'var(--text-2)',marginTop:2 }}>
+                          {ev.hora_inicio}{ev.hora_fim ? `–${ev.hora_fim}` : ''}
+                          {ev.convidados > 0 && ` · ${ev.convidados} convidados`}
+                          {ev.criancas   > 0 && ` · ${ev.criancas} crianças`}
+                        </div>
+                        {ev.customer_nome && (
+                          <div style={{ fontSize:11,color:'var(--text-3)',marginTop:1 }}>👤 {ev.customer_nome}</div>
+                        )}
+                      </div>
+                      <StatusBadge status={ev.status}/>
                     </div>
-                    <div style={{ flex:1 }}>
-                      <div style={{ fontSize:13.5,fontWeight:600 }}>{ev.nome}</div>
-                      <div style={{ fontSize:12,color:'var(--text-2)',marginTop:2 }}>{ev.horario_inicio}–{ev.horario_fim} · {ev.criancas} crianças</div>
+                  ) : (
+                    <div key={ev.id} className="list-item">
+                      <div style={{ width:38,height:38,borderRadius:8,background:'var(--surface-2)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',flexShrink:0 }}>
+                        <span style={{ fontSize:10,fontWeight:700,color:'var(--accent)' }}>{format(new Date(ev.data+'T00:00'),'MMM',{locale:ptBR}).toUpperCase()}</span>
+                        <span style={{ fontSize:16,fontWeight:800,lineHeight:1,color:'var(--text)' }}>{format(new Date(ev.data+'T00:00'),'dd')}</span>
+                      </div>
+                      <div style={{ flex:1 }}>
+                        <div style={{ fontSize:13.5,fontWeight:600 }}>{ev.nome}</div>
+                        <div style={{ fontSize:12,color:'var(--text-2)',marginTop:2 }}>
+                          {ev.horario_inicio}–{ev.horario_fim} · {ev.criancas} crianças
+                        </div>
+                      </div>
+                      <span className="badge badge-blue">{ev.tipo}</span>
                     </div>
-                    <span className="badge badge-blue">{ev.tipo}</span>
-                  </div>
+                  )
                 ))}
               </div>
             )}
@@ -240,6 +316,54 @@ export default function Dashboard() {
                     <span className={`badge ${es.turno==='Manhã'?'badge-yellow':es.turno==='Tarde'?'badge-teal':'badge-orange'}`}>{es.turno}</span>
                   </div>
                 ))}
+              </div>
+            )}
+          </div>
+
+          {/* Sistema externo — status */}
+          <div className="card">
+            <div className="card-header">
+              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                <Link2 size={16} style={{ color:'#6366f1' }}/>
+                <span className="card-title" style={{ color:'#6366f1' }}>Sistema Externo</span>
+              </div>
+              {l6
+                ? <Loader2 size={13} className="animate-spin" style={{ color:'#6366f1' }}/>
+                : erroExt
+                  ? <span className="badge badge-red">Offline</span>
+                  : <span className="badge" style={{ background:'#ede9fe',color:'#6366f1' }}>{extEventos.length} eventos</span>
+              }
+            </div>
+            {erroExt ? (
+              <div style={{ padding:'12px 16px', fontSize:12.5, color:'#ef4444' }}>
+                ⚠️ {erroExt}
+              </div>
+            ) : extEventos.length === 0 ? (
+              <div className="empty-state" style={{ padding:24 }}>
+                <div className="empty-icon">🔗</div>
+                <div className="empty-title">Nenhum evento externo</div>
+              </div>
+            ) : (
+              <div style={{ padding:'10px 16px', display:'flex', flexDirection:'column', gap:8 }}>
+                <div style={{ display:'flex', justifyContent:'space-between', fontSize:13 }}>
+                  <span style={{ color:'var(--text-2)' }}>Hoje</span>
+                  <span style={{ fontWeight:700, color:'#6366f1' }}>{extHoje.length}</span>
+                </div>
+                <div style={{ display:'flex', justifyContent:'space-between', fontSize:13 }}>
+                  <span style={{ color:'var(--text-2)' }}>Próximos (6 meses)</span>
+                  <span style={{ fontWeight:700, color:'#6366f1' }}>{extEventos.filter(e=>e.data>today).length}</span>
+                </div>
+                {extEventos.filter(e=>e.valor>0).length > 0 && (
+                  <div style={{ display:'flex', justifyContent:'space-between', fontSize:13 }}>
+                    <span style={{ color:'var(--text-2)' }}>Valor total</span>
+                    <span style={{ fontWeight:700, color:'var(--green)' }}>
+                      R$ {extEventos.reduce((s,e)=>s+e.valor,0).toLocaleString('pt-BR',{minimumFractionDigits:2})}
+                    </span>
+                  </div>
+                )}
+                <a href="/eventos" style={{ fontSize:12.5,color:'#6366f1',fontWeight:600,display:'flex',alignItems:'center',gap:4,marginTop:4 }}>
+                  Ver na agenda <ChevronRight size={13}/>
+                </a>
               </div>
             )}
           </div>
